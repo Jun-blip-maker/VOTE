@@ -1,0 +1,76 @@
+.body {
+  background-color: whitesmoke;
+  color: white;
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+
+.image {
+  width: 55%;
+  height: 74vh;
+    
+}
+.centered-text {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white; /* Adjust for visibility */
+  font-size: 30px;
+  font-weight: bold;
+  text-shadow: 2px 2px 5px black;
+}
+.centered-text2 {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white; /* Adjust for visibility */
+  font-size: 20px;
+  font-weight: bold;
+  text-shadow: 2px 2px 5px black;
+}
+
+
+.gau p {
+  position: relative;
+  top: 50%;
+  text-align: center;
+  margin-left: 520px;
+  margin-right: 100px;
+}
+.gau p button {
+  color: #008800;
+  border: 20px;
+}
+.container2 {
+  width: 100vmax;
+  line-height: 1.7;
+}
+.head {
+  font-size: 2.5rem;
+  text-align: center;
+}
+.card {
+  height: 60px;
+}
+
+
+
+.alert {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+}
+.alert-danger {
+  color: #721c24;
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+}
+.final {
+  float: right;
+ 
+}

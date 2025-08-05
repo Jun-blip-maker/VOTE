@@ -1,0 +1,164 @@
+{
+  "uploads": [],
+  "candidates": [
+    {
+      "id": "801f",
+      "fullName": "Ali Aga",
+      "regNumber": "S111/1843/23",
+      "school": "School of Business and Economics",
+      "position": "Secretary General",
+      "phone": "0796346686",
+      "email": "tommy12@gmail.com",
+      "yearOfStudy": "1st Year",
+      "course": "",
+      "photoUrl": "Profile pic.jpg",
+      "createdAt": "2025-07-03T14:27:59.079Z"
+    },
+    {
+      "id": "27c1",
+      "fullName": "harry porter",
+      "regNumber": "E123/123/123",
+      "school": "School of Education Arts",
+      "position": "ChairPerson",
+      "phone": "0712345678",
+      "email": "Dambledor@gmail.com",
+      "yearOfStudy": "3rd Year",
+      "course": "",
+      "photoUrl": "ABDIRIZAK.jpg",
+      "createdAt": "2025-07-10T08:53:34.402Z"
+    }
+  ],
+  "delegates": [],
+  "votes": {
+    "item": {
+      "item": {
+        "item": {
+          "item": {
+            "Khadijun": 0,
+            "Iqra": 0,
+            "Abdiaziz": 0,
+            "Abdimajid": 0,
+            "Atwa": 0,
+            "Zaki": 0,
+            "Leyla": 0,
+            "Sanem": 0,
+            "JeyJ": 0,
+            "Ali": 0,
+            "Yeshi": 0,
+            "zuuu": 0
+          },
+          "Khadijun": 1,
+          "Iqra": 0,
+          "Abdiaziz": 0,
+          "Abdimajid": 0,
+          "Atwa": 0,
+          "Zaki": 0,
+          "Leyla": 0,
+          "Sanem": 0,
+          "JeyJ": 0,
+          "Ali": 0,
+          "Yeshi": 0,
+          "zuuu": 0
+        },
+        "Khadijun": 0,
+        "Iqra": 0,
+        "Abdiaziz": 0,
+        "Abdimajid": 0,
+        "Atwa": 0,
+        "Zaki": 0,
+        "Leyla": 0,
+        "Sanem": 0,
+        "JeyJ": 0,
+        "Ali": 0,
+        "Yeshi": 0,
+        "zuuu": 0
+      },
+      "Khadijun": 0,
+      "Iqra": 0,
+      "Abdiaziz": 0,
+      "Abdimajid": 0,
+      "Atwa": 0,
+      "Zaki": 0,
+      "Leyla": 1,
+      "Sanem": 0,
+      "JeyJ": 0,
+      "Ali": 0,
+      "Yeshi": 0,
+      "zuuu": 0
+    },
+    "Khadijun": 2,
+    "Iqra": 1,
+    "Abdiaziz": 0,
+    "Abdimajid": 1,
+    "Atwa": 0,
+    "Zaki": 0,
+    "Leyla": 0,
+    "Sanem": 0,
+    "JeyJ": 0,
+    "Ali": 0,
+    "Yeshi": 0,
+    "zuuu": 0
+  },
+  "voters": [
+    {
+      "id": "hpvej2ukx",
+      "name": "khadijun",
+      "regNumber": "S111/1843/23",
+      "email": "tommy12@gmail.com",
+      "votedFor": "Khadijun",
+      "timestamp": "2025-06-27T19:26:54.809Z"
+    },
+    {
+      "id": "lrc1hembi",
+      "name": "yesh",
+      "regNumber": "S111/1843/20",
+      "email": "ahmedeen12@gmail.com",
+      "votedFor": "Khadijun",
+      "timestamp": "2025-07-01T08:59:58.895Z"
+    },
+    {
+      "id": "5xr0s93u4",
+      "name": "yesh",
+      "regNumber": "S675/9087/98",
+      "email": "kardikhadija1@gmail.com",
+      "votedFor": "Iqra",
+      "timestamp": "2025-07-03T14:05:30.906Z"
+    },
+    {
+      "id": "k2zvp0iai",
+      "name": "khadija ali",
+      "regNumber": "S113/234/56",
+      "email": "shikowamboi31@gmail.com",
+      "votedFor": "Abdimajid",
+      "timestamp": "2025-08-03T07:26:24.307Z"
+    }
+  ],
+  "C.votes": [
+    {
+      "id": "cce0",
+      "name": "Kheusha",
+      "regnumber": "E124/987/89",
+      "delegate": "business",
+      "chairperson": "candidate1",
+      "vice_chair": "candidate1",
+      "secretary": "candidate3",
+      "treasurer": "candidate2",
+      "academic": "candidate2",
+      "welfare": "candidate1",
+      "sports": "candidate1"
+    },
+    {
+      "id": "33b3",
+      "name": "andimajid",
+      "regnumber": "S123/456/78",
+      "delegate": "science",
+      "chairperson": "candidate1",
+      "vice_chair": "candidate2",
+      "secretary": "candidate2",
+      "treasurer": "candidate1",
+      "academic": "candidate3",
+      "welfare": "candidate1",
+      "sports": "candidate3"
+    }
+  ]
+}
