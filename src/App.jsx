@@ -10,6 +10,10 @@ import Register from "./Component/Register";
 import RegistrationAdmin from "./Component/RegistrationAdmin";
 import VotesAdmin from "./Component/VotesAdmin";
 import CVote from "./Component/CVote";
+import Student from "./Component/Student";
+import StudentSignin from "./Component/StudentSignin";
+import DelegateReg from "./Component/DelegateReg";
+import DelegateSignin from "./Component/DelegateSignin";
 
 function App() {
   return (
@@ -24,6 +28,10 @@ function App() {
           <Route path="/registration-page" element={<RegistrationAdmin />} />
           <Route path="/voteadmin-page" element={<VotesAdmin />} />
           <Route path="/CV-page" element={<CVote />} />
+          <Route path="/student-reg" element={<Student />} />
+          <Route path="/student-signin" element={<StudentSignin />} />
+          <Route path="/delegate-reg" element={<DelegateReg />} />
+          <Route path="/delegate-signin" element={<DelegateSignin />} />
         </Route>
 
         <Route>
