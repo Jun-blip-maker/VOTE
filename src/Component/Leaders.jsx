@@ -2,6 +2,7 @@ import "./vote.css";
 import VoteDropdown from "./VoteDropdown";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import RegDropDown from "./RegDropDown";
 
 function Leaders() {
   const [candidatesByPosition, setCandidatesByPosition] = useState({});
@@ -35,7 +36,6 @@ function Leaders() {
 
   return (
     <>
-      
       <header className="header sticky top-0 z-50  font-sans font-semibold">
         <div
           className="flex  text-white font-sans font-semibold h-10 py-1 justify-between"
@@ -64,8 +64,8 @@ function Leaders() {
             </li>
           </ul>
         </div>
-        <nav 
-         className="shadow-md "
+        <nav
+          className="shadow-md "
           style={{
             position: "relative",
             height: "70px",
@@ -90,19 +90,15 @@ function Leaders() {
             </ul>
           </div>
           <div className="flex items-center mr-8">
+            <RegDropDown />
+            <VoteDropdown />
+
             <Link
               to="/"
               className="bg-green-700 hover:bg-green-800 text-white text-sm sm:text-base py-2 px-2 rounded mr-2 transition-colors duration-300"
             >
               logout
             </Link>
-            <Link
-              to="/register-page"
-              className="bg-green-700 hover:bg-green-800 text-white text-sm sm:text-base py-2 px-4 rounded mr-4 transition-colors duration-300"
-            >
-              Register
-            </Link>
-            <VoteDropdown />
           </div>
         </nav>
       </header>

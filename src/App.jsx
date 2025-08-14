@@ -6,7 +6,7 @@ import Login from "./Component/Login";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import VoteDropdown from "./Component/VoteDropdown";
 import Delegates from "./Component/Delegates";
-import Register from "./Component/Register";
+
 import RegistrationAdmin from "./Component/RegistrationAdmin";
 import VotesAdmin from "./Component/VotesAdmin";
 import CVote from "./Component/CVote";
@@ -14,6 +14,8 @@ import Student from "./Component/Student";
 import StudentSignin from "./Component/StudentSignin";
 import DelegateReg from "./Component/DelegateReg";
 import DelegateSignin from "./Component/DelegateSignin";
+import LeaderReg from "./Component/LeaderReg";
+import RegDropDown from "./Component/RegDropDown";
 
 function App() {
   return (
@@ -24,7 +26,7 @@ function App() {
 
           <Route path="/dropdown" element={<VoteDropdown />} />
           <Route path="/delegates-page" element={<Delegates />} />
-          <Route path="/register-page" element={<Register />} />
+          <Route path="/leader-reg" element={<LeaderReg />} />
           <Route path="/registration-page" element={<RegistrationAdmin />} />
           <Route path="/voteadmin-page" element={<VotesAdmin />} />
           <Route path="/CV-page" element={<CVote />} />
@@ -32,6 +34,7 @@ function App() {
           <Route path="/student-signin" element={<StudentSignin />} />
           <Route path="/delegate-reg" element={<DelegateReg />} />
           <Route path="/delegate-signin" element={<DelegateSignin />} />
+          <Route path="/regdropdown" element={<RegDropDown />} />
         </Route>
 
         <Route>

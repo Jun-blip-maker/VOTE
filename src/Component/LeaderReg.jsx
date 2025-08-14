@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-function Register() {
+function LeaderReg() {
   const [formData, setFormData] = useState({
     fullName: "",
     regNumber: "",
@@ -95,12 +95,12 @@ function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4">
+    <div className="min-h-screen    justify-center bg-green-50 py-12 px-4 md:px-10 lg:px-8">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
           <div className="p-6 sm:p-8">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-green-800 mb-2">
+              <h2 className="mt-6 text-2xl font-extrabold text-gray-900">
                 APPLICATION FORM
               </h2>
               <p className="text-gray-500">Fill in your details to register</p>
@@ -109,11 +109,14 @@ function Register() {
             <form onSubmit={handleSubmit}>
               {/* Personal Information */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
+                </label>
                 <input
                   type="text"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="fullName"
+                  placeholder="Enter your full name"
                   value={formData.fullName}
                   onChange={handleChange}
                   required
@@ -128,6 +131,7 @@ function Register() {
                   type="text"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="regNumber"
+                  placeholder="Enter your registration number"
                   value={formData.regNumber}
                   onChange={handleChange}
                   required
@@ -135,11 +139,14 @@ function Register() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
                 <input
                   type="tel"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="phone"
+                  placeholder="07XXXXXXXX"
                   value={formData.phone}
                   onChange={handleChange}
                   required
@@ -147,11 +154,14 @@ function Register() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
                 <input
                   type="email"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="email"
+                  placeholder="Enter your email"
                   value={formData.email}
                   onChange={handleChange}
                 />
@@ -159,15 +169,18 @@ function Register() {
 
               {/* Academic Information */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">School</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  School
+                </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="school"
+                  placeholder="Select your school"
                   value={formData.school}
                   onChange={handleChange}
                   required
                 >
-                  <option value="">Select School</option>
+                  <option value="disabled">Select School</option>
                   <option>School of Business and Economics</option>
                   <option>School of Pure and Applied Science</option>
                   <option>School of Education Arts</option>
@@ -176,7 +189,9 @@ function Register() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Year of Study</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Year of Study
+                </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="yearOfStudy"
@@ -193,7 +208,9 @@ function Register() {
 
               {/* Position Applying For */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Position
+                </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="position"
@@ -214,7 +231,9 @@ function Register() {
 
               {/* Photo Upload */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Photo
+                </label>
                 <input
                   type="file"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -249,4 +268,4 @@ function Register() {
   );
 }
 
-export default Register;
+export default LeaderReg;

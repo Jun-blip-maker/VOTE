@@ -7,10 +7,7 @@ const DelegateReg = () => {
     registrationNumber: "",
     password: "",
     confirmPassword: "",
-    document: null, // Added for file storage
   });
-
-  const [fileError, setFileError] = useState(""); // Added for file validation
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -20,35 +17,10 @@ const DelegateReg = () => {
     }));
   };
 
-  // Added this handler for file upload
-  const handleDocumentChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFormData((prev) => ({
-        ...prev,
-        document: file,
-      }));
-      setFileError("");
-    }
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
-
-    // Basic file validation
-    if (!formData.document) {
-      setFileError("Please upload a document");
-      return;
-    }
-
     // Handle registration logic here
     console.log(formData);
-
-    // If you need to send to server:
-    const submissionData = new FormData();
-    for (const key in formData) {
-      submissionData.append(key, formData[key]);
-    }
   };
 
   return (
@@ -56,7 +28,7 @@ const DelegateReg = () => {
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
         <div className="text-center">
           <h2 className="mt-6 text-2xl font-extrabold text-gray-900">
-            Delegate Registeration Form
+            Delegate Register Form
           </h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -116,44 +88,6 @@ const DelegateReg = () => {
                 value={formData.registrationNumber}
                 onChange={handleChange}
               />
-            </div>
-
-            <div>
-              <label
-                htmlFor="documentUpload"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Upload Document (PDF, DOCX, TXT, JPG, PNG)
-              </label>
-              <input
-                id="documentUpload"
-                name="documentUpload"
-                type="file"
-                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
-                required
-                onChange={handleDocumentChange}
-                className="mt-1 block w-full text-sm text-gray-500
-      file:mr-4 file:py-2 file:px-4
-      file:rounded-md file:border-0
-      file:text-sm file:font-semibold
-      file:bg-green-50 file:text-green-700
-      hover:file:bg-green-100"
-                multiple={false} // Set to true if you want multiple files
-              />
-              {fileError && (
-                <p className="mt-1 text-sm text-red-600">{fileError}</p>
-              )}
-              {formData.document && (
-                <div className="mt-2">
-                  <p className="text-sm text-green-600">
-                    Selected: {formData.document.name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Type: {formData.document.type} | Size:{" "}
-                    {(formData.document.size / 1024).toFixed(2)} KB
-                  </p>
-                </div>
-              )}
             </div>
 
             <div>
