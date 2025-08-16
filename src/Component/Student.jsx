@@ -1,14 +1,20 @@
 import React, { useState } from "react";
+import Swal from "sweetalert2";
 
 const Student = () => {
   const [formData, setFormData] = useState({
-    fullName: "",
-    emailOrPhone: "",
-    registrationNumber: "",
+    full_name: "",
+    email_or_phone: "",
+    registration_number: "",
     password: "",
     confirmPassword: "",
+    faculty: "Computer Science",
+    year_of_study: 1,
   });
 
+  const [loading, setLoading] = useState(false);
+
+  // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -17,111 +23,212 @@ const Student = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  // Handle form submit
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle registration logic here
-    console.log(formData);
+
+    // Validate password match
+    if (formData.password !== formData.confirmPassword) {
+      Swal.fire({
+        icon: "error",
+        title: "Password Mismatch",
+        text: "Your passwords do not match. Please try again.",
+      });
+      return;
+    }
+
+    // Validate password length
+    if (formData.password.length < 8) {
+      Swal.fire({
+        icon: "error",
+        title: "Weak Password",
+        text: "Password must be at least 8 characters long.",
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/api/students/register",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            full_name: formData.full_name,
+            email_or_phone: formData.email_or_phone,
+            registration_number: formData.registration_number,
+            password: formData.password,
+            faculty: formData.faculty,
+            year_of_study: parseInt(formData.year_of_study, 10),
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Registration failed");
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: "Registration Successful!",
+        text: "You have been successfully registered.",
+        showConfirmButton: false,
+        timer: 2000,
+      }).then(() => {
+        // Reset form
+        setFormData({
+          full_name: "",
+          email_or_phone: "",
+          registration_number: "",
+          password: "",
+          confirmPassword: "",
+          faculty: "Computer Science",
+          year_of_study: 1,
+        });
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Registration Failed",
+        text: error.message || "Failed to connect to server",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen   flex items-center justify-center bg-green-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-green-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
         <div className="text-center">
           <h2 className="mt-6 text-2xl font-extrabold text-gray-900">
-            Student Register Form
+            Student Registration
           </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Please fill in your details to register
+          </p>
         </div>
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm space-y-4">
+            {/* Full Name */}
             <div>
-              <label
-                htmlFor="fullName"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label className="block text-sm font-medium text-gray-700">
                 Full Name
               </label>
               <input
-                id="fullName"
-                name="fullName"
+                name="full_name"
                 type="text"
                 required
-                className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
                 placeholder="Enter your full name"
-                value={formData.fullName}
+                value={formData.full_name}
                 onChange={handleChange}
               />
             </div>
 
+            {/* Email or Phone */}
             <div>
-              <label
-                htmlFor="emailOrPhone"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Email or Phone
+              <label className="block text-sm font-medium text-gray-700">
+                Email or Phone Number
               </label>
               <input
-                id="emailOrPhone"
-                name="emailOrPhone"
+                name="email_or_phone"
                 type="text"
                 required
-                className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Enter your email or phone"
-                value={formData.emailOrPhone}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                placeholder="Email or phone"
+                value={formData.email_or_phone}
                 onChange={handleChange}
               />
             </div>
 
+            {/* Registration Number */}
             <div>
-              <label
-                htmlFor="registrationNumber"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label className="block text-sm font-medium text-gray-700">
                 Registration Number
               </label>
               <input
-                id="registrationNumber"
-                name="registrationNumber"
+                name="registration_number"
                 type="text"
                 required
-                className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Enter your email or phone"
-                value={formData.registrationNumber}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                placeholder="Format: GUS-1234-2023"
+                value={formData.registration_number}
                 onChange={handleChange}
               />
             </div>
 
+            {/* Faculty */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
+              <label className="block text-sm font-medium text-gray-700">
+                Faculty
+              </label>
+              <select
+                name="faculty"
+                className="mt-1 block w-full border border-gray-300 rounded-md"
+                value={formData.faculty}
+                onChange={handleChange}
               >
+                <option value="Computer Science">Computer Science</option>
+                <option value="Engineering">Engineering</option>
+                <option value="Business">Business</option>
+                <option value="Education">Education</option>
+                <option value="Health Sciences">Health Sciences</option>
+              </select>
+            </div>
+
+            {/* Year of Study */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Year of Study
+              </label>
+              <select
+                name="year_of_study"
+                className="mt-1 block w-full border border-gray-300 rounded-md"
+                value={formData.year_of_study}
+                onChange={handleChange}
+              >
+                <option value={1}>1st Year</option>
+                <option value={2}>2nd Year</option>
+                <option value={3}>3rd Year</option>
+                <option value={4}>4th Year</option>
+              </select>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
                 Password
               </label>
               <input
-                id="password"
                 name="password"
                 type="password"
                 required
-                className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Enter your password"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                placeholder="At least 8 characters"
                 value={formData.password}
                 onChange={handleChange}
               />
             </div>
 
+            {/* Confirm Password */}
             <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label className="block text-sm font-medium text-gray-700">
                 Confirm Password
               </label>
               <input
-                id="confirmPassword"
                 name="confirmPassword"
                 type="password"
                 required
-                className="mt-1 appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
                 onChange={handleChange}
@@ -129,17 +236,31 @@ const Student = () => {
             </div>
           </div>
 
+          {/* Submit Button */}
           <div>
             <button
               type="submit"
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium bg-green-700 hover:bg-green-800 text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              disabled={loading}
+              className={`w-full flex justify-center py-2 px-4 rounded-md text-white bg-green-700 hover:bg-green-800 ${
+                loading ? "opacity-70 cursor-not-allowed" : ""
+              }`}
             >
-              register
+              {loading ? "Processing..." : "Register"}
             </button>
           </div>
         </form>
 
-        <div className="text-center text-sm"></div>
+        <div className="text-center text-sm text-gray-600">
+          <p>
+            Already have an account?{" "}
+            <a
+              href="/login"
+              className="font-medium text-green-600 hover:text-green-500"
+            >
+              Login here
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
