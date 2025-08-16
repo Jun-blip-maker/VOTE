@@ -3,7 +3,7 @@ from flask_cors import CORS
 import sqlite3
 
 app = Flask(__name__)
-CORS(app)  # <-- allow React frontend to talk to Flask
+CORS(app)  # allow React frontend to talk to Flask
 DATABASE = "garissa_voting.db"
 
 
@@ -22,9 +22,7 @@ def init_db():
             full_name TEXT NOT NULL,
             email_or_phone TEXT NOT NULL,
             registration_number TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            faculty TEXT,
-            year_of_study INTEGER
+            password TEXT NOT NULL
         )
     ''')
     db.commit()
@@ -46,16 +44,14 @@ def register_student():
         cursor = db.cursor()
         cursor.execute(
             '''
-            INSERT INTO students (full_name, email_or_phone, registration_number, password, faculty, year_of_study)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO students (full_name, email_or_phone, registration_number, password)
+            VALUES (?, ?, ?, ?)
             ''',
             (
                 data.get("full_name"),
                 data.get("email_or_phone"),
                 data.get("registration_number"),
                 data.get("password"),
-                data.get("faculty"),
-                data.get("year_of_study"),
             ),
         )
         db.commit()

@@ -8,8 +8,6 @@ const Student = () => {
     registration_number: "",
     password: "",
     confirmPassword: "",
-    faculty: "Computer Science",
-    year_of_study: 1,
   });
 
   const [loading, setLoading] = useState(false);
@@ -62,8 +60,6 @@ const Student = () => {
             email_or_phone: formData.email_or_phone,
             registration_number: formData.registration_number,
             password: formData.password,
-            faculty: formData.faculty,
-            year_of_study: parseInt(formData.year_of_study, 10),
           }),
         }
       );
@@ -88,8 +84,6 @@ const Student = () => {
           registration_number: "",
           password: "",
           confirmPassword: "",
-          faculty: "Computer Science",
-          year_of_study: 1,
         });
       });
     } catch (error) {
@@ -164,43 +158,6 @@ const Student = () => {
                 value={formData.registration_number}
                 onChange={handleChange}
               />
-            </div>
-
-            {/* Faculty */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Faculty
-              </label>
-              <select
-                name="faculty"
-                className="mt-1 block w-full border border-gray-300 rounded-md"
-                value={formData.faculty}
-                onChange={handleChange}
-              >
-                <option value="Computer Science">Computer Science</option>
-                <option value="Engineering">Engineering</option>
-                <option value="Business">Business</option>
-                <option value="Education">Education</option>
-                <option value="Health Sciences">Health Sciences</option>
-              </select>
-            </div>
-
-            {/* Year of Study */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Year of Study
-              </label>
-              <select
-                name="year_of_study"
-                className="mt-1 block w-full border border-gray-300 rounded-md"
-                value={formData.year_of_study}
-                onChange={handleChange}
-              >
-                <option value={1}>1st Year</option>
-                <option value={2}>2nd Year</option>
-                <option value={3}>3rd Year</option>
-                <option value={4}>4th Year</option>
-              </select>
             </div>
 
             {/* Password */}
