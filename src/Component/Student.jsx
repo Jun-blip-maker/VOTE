@@ -209,9 +209,9 @@ const Student = () => {
 
         <div className="text-center text-sm text-gray-600">
           <p>
-            Already have an account?{" "}
+            Already have an registered?{" "}
             <a
-              href="/login"
+              href="/student-signin"
               className="font-medium text-green-600 hover:text-green-500"
             >
               Login here
