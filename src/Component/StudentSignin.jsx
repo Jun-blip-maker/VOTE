@@ -10,12 +10,7 @@ const StudentSignin = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Safely get API URL with multiple fallbacks
-  const API_URL =
-    import.meta.env.VITE_API_URL ||
-    process.env.REACT_APP_API_URL ||
-    window.API_URL ||
-    "http://localhost:5000";
+  const API_URL = "http://localhost:5000";
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -30,24 +25,30 @@ const StudentSignin = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/students/login`, {
+      const response = await fetch(`http://localhost:5000/api/students/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          registration_number: formData.registration_number.trim(),
+          password: formData.password.trim(),
+        }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Login failed. Please check your credentials."
-        );
+        let errorMessage = data.error || "Login failed";
+        if (data.suggestion) {
+          errorMessage += `. ${data.suggestion}`;
+        }
+        throw new Error(errorMessage);
       }
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("student", JSON.stringify(data.student));
+      // Store authentication data
+      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("studentData", JSON.stringify(data.student));
 
       await Swal.fire({
         icon: "success",
@@ -56,16 +57,16 @@ const StudentSignin = () => {
         timer: 1500,
       });
 
+      // Redirect based on delegate status
       navigate(
-        data.student.is_delegate ? "/delegates-page" : "/student-dashboard"
+        data.student.is_delegate ? "/delegates-page" : "/delegates-page"
       );
     } catch (error) {
+      console.error("Login error:", error);
       Swal.fire({
         icon: "error",
         title: "Login Failed",
-        text: error.message.includes("Failed to fetch")
-          ? `Could not connect to the server at ${API_URL}. Please try again later.`
-          : error.message,
+        html: error.message.replace(/\n/g, "<br>"), // Preserve line breaks
       });
     } finally {
       setLoading(false);
@@ -79,19 +80,18 @@ const StudentSignin = () => {
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
             Student Login
           </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Sign in with your registration details
+          </p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm space-y-4">
             <div>
-              <label
-                htmlFor="registration_number"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label className="block text-sm font-medium text-gray-700">
                 Registration Number
               </label>
               <input
-                id="registration_number"
                 name="registration_number"
                 type="text"
                 required
@@ -104,14 +104,10 @@ const StudentSignin = () => {
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label className="block text-sm font-medium text-gray-700">
                 Password
               </label>
               <input
-                id="password"
                 name="password"
                 type="password"
                 required
@@ -162,6 +158,18 @@ const StudentSignin = () => {
             </button>
           </div>
         </form>
+
+        <div className="text-center text-sm text-gray-600">
+          <p>
+            Not registered yet?{" "}
+            <a
+              href="/student-register"
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Create an account
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
