@@ -68,7 +68,7 @@ const DelegateReg = () => {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/api/delegates/register",
+        "http://localhost:5000/api/delegates/register",
         {
           method: "POST",
           headers: {
@@ -94,9 +94,9 @@ const DelegateReg = () => {
       await Swal.fire({
         icon: "success",
         title: "Registration Successful!",
-        text: "Delegate account created successfully",
+        text: "Your account has been created and is pending admin approval. You will be notified once approved.",
         showConfirmButton: false,
-        timer: 2000,
+        timer: 3000,
       });
 
       // Redirect to login page after successful registration
@@ -202,12 +202,14 @@ const DelegateReg = () => {
                 disabled={loading}
               >
                 <option value="">Select your faculty</option>
-                <option value="Computer Science">
+                <option value="Pure and Applied Science">
                   Pure and Applied Science
                 </option>
-                <option value="Engineering">Business And Economics</option>
-                <option value="Business">Education Arts</option>
-                <option value="Education">Education Sciences</option>
+                <option value="Business And Economics">
+                  Business And Economics
+                </option>
+                <option value="Education Arts">Education Arts</option>
+                <option value="Education Sciences">Education Sciences</option>
               </select>
             </div>
 

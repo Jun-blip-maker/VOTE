@@ -16,6 +16,7 @@ import DelegateReg from "./Component/DelegateReg";
 import DelegateSignin from "./Component/DelegateSignin";
 import LeaderReg from "./Component/LeaderReg";
 import RegDropDown from "./Component/RegDropDown";
+import AdminDelegates from "./Component/AdminDelegates";
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
           <Route path="/delegate-reg" element={<DelegateReg />} />
           <Route path="/delegate-signin" element={<DelegateSignin />} />
           <Route path="/regdropdown" element={<RegDropDown />} />
+          <Route path="/Admin-delegates" element={<AdminDelegates />} />
         </Route>
 
         <Route>

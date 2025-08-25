@@ -25,7 +25,7 @@ const StudentSignin = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:5000/api/students/login`, {
+      const response = await fetch("http://localhost:5000/api/students/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -43,7 +43,7 @@ const StudentSignin = () => {
         if (data.suggestion) {
           errorMessage += `. ${data.suggestion}`;
         }
-        throw new Error(errorMessage);
+        throw new Error(data.error || "Login failed. Please try again.");
       }
 
       // Store authentication data
@@ -53,6 +53,7 @@ const StudentSignin = () => {
       await Swal.fire({
         icon: "success",
         title: "Login Successful!",
+        text: "Welcome back!",
         showConfirmButton: false,
         timer: 1500,
       });

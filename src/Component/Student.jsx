@@ -49,7 +49,7 @@ const Student = () => {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/api/students/register",
+        "http://localhost:5000/api/students/register",
         {
           method: "POST",
           headers: {
