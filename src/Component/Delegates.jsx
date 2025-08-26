@@ -11,6 +11,14 @@ const Delegates = () => {
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Define the schools exactly as they should appear
+  const schools = [
+    "School of Business and Economics",
+    "School of Pure and Applied Science",
+    "School of Education of Art",
+    "School of Education Science",
+  ];
+
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
@@ -21,17 +29,39 @@ const Delegates = () => {
         }
 
         const data = await response.json();
+        console.log("Candidates loaded:", data); // Debug log
         setCandidates(data);
         setIsLoading(false);
       } catch (err) {
         setError("Failed to load candidates");
         setIsLoading(false);
+        console.error("Error loading candidates:", err);
       }
     };
     fetchCandidates();
   }, []);
 
-  const handleCandidateSelect = (candidate) => {
+  // Group candidates by school/faculty - with better matching
+  const candidatesBySchool = schools.reduce((acc, school) => {
+    acc[school] = candidates.filter((candidate) => {
+      // Try multiple ways to match the school
+      const candidateSchool = candidate.faculty || candidate.school || "";
+      return (
+        candidateSchool.toLowerCase().includes(school.toLowerCase()) ||
+        school.toLowerCase().includes(candidateSchool.toLowerCase())
+      );
+    });
+    return acc;
+  }, {});
+
+  const handleCandidateSelect = (e) => {
+    const candidateId = e.target.value;
+    if (candidateId === "") {
+      setSelectedCandidate(null);
+      return;
+    }
+
+    const candidate = candidates.find((c) => c.id.toString() === candidateId);
     setSelectedCandidate(candidate);
     setError("");
   };
@@ -77,13 +107,6 @@ const Delegates = () => {
     }
   };
 
-  // Group candidates by faculty (changed from school to match our database)
-  const candidatesByFaculty = candidates.reduce((acc, candidate) => {
-    if (!acc[candidate.faculty]) acc[candidate.faculty] = [];
-    acc[candidate.faculty].push(candidate);
-    return acc;
-  }, {});
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -94,13 +117,13 @@ const Delegates = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="bg-white shadow-lg rounded-lg overflow-hidden">
           <div className="p-6 sm:p-8">
             <h1 className="text-2xl font-bold text-center text-gray-900 mb-6">
               {selectedCandidate
                 ? "Confirm Your Vote"
-                : "Student Delegates Election"}
+                : "School Delegates Election"}
             </h1>
 
             {error && (
@@ -117,39 +140,46 @@ const Delegates = () => {
 
             {!selectedCandidate ? (
               <div className="space-y-8">
-                {Object.entries(candidatesByFaculty).map(
-                  ([faculty, facultyCandidates]) => (
-                    <div
-                      key={faculty}
-                      className="border-b border-gray-200 pb-6 last:border-b-0"
-                    >
-                      <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                        {faculty}
-                      </h2>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        {facultyCandidates.map((candidate) => (
-                          <div
-                            key={candidate.id}
-                            className="p-4 border border-gray-200 rounded-lg hover:bg-indigo-50 cursor-pointer transition-colors"
-                            onClick={() => handleCandidateSelect(candidate)}
-                          >
-                            <h3 className="font-medium text-gray-900">
-                              {candidate.full_name}
-                            </h3>
-                            <p className="text-sm text-gray-500">
-                              {candidate.registration_number}
-                            </p>
-                            {candidate.position && (
-                              <p className="text-sm text-gray-600 mt-1">
-                                Position: {candidate.position}
-                              </p>
-                            )}
-                          </div>
+                {schools.map((school) => (
+                  <div
+                    key={school}
+                    className="border-b border-gray-200 pb-6 last:border-b-0"
+                  >
+                    <h2 className="text-lg font-semibold text-gray-800 mb-4">
+                      {school}
+                    </h2>
+
+                    {candidatesBySchool[school] &&
+                    candidatesBySchool[school].length > 0 ? (
+                      <select
+                        className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        onChange={handleCandidateSelect}
+                        defaultValue=""
+                      >
+                        <option value="">
+                          Select a delegate from {school}
+                        </option>
+                        {candidatesBySchool[school].map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.full_name} -{" "}
+                            {candidate.registration_number}
+                            {candidate.position && ` (${candidate.position})`}
+                          </option>
                         ))}
+                      </select>
+                    ) : (
+                      <div className="bg-yellow-50 p-4 rounded-md">
+                        <p className="text-yellow-700 italic">
+                          No delegates available for this school.
+                          <br />
+                          <span className="text-sm">
+                            (Admins need to approve delegates from this school)
+                          </span>
+                        </p>
                       </div>
-                    </div>
-                  )
-                )}
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
               <form onSubmit={handleSubmitVote} className="space-y-6">
@@ -162,7 +192,7 @@ const Delegates = () => {
                       {selectedCandidate.full_name}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {selectedCandidate.faculty}
+                      {selectedCandidate.faculty || selectedCandidate.school}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Reg: {selectedCandidate.registration_number}
