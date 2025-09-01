@@ -21,7 +21,7 @@ function Login() {
     e.preventDefault();
 
     if (formData.userType === "admin") {
-      navigate("/registration-page");
+      navigate("/Admin-delegates");
     } else if (formData.userType === "student") {
       navigate("/home-page");
     }
@@ -35,17 +35,17 @@ function Login() {
         <div className="bg-white rounded-xl shadow-md p-8">
           <div className="sm:mx-auto sm:w-full sm:max-w-sm justify-center">
             <div className="">
-            <img
-                    className="h-25 justify-center mx-auto"
-                    src="/src/Component/images/gau-logo.png"
-                    alt="GAU"
-                  /> 
-                  </div>
+              <img
+                className="h-25 justify-center mx-auto"
+                src="/src/Component/images/gau-logo.png"
+                alt="GAU"
+              />
+            </div>
 
-                  <div>
-            <h2 className="mt-5 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
-              LOGIN
-            </h2>
+            <div>
+              <h2 className="mt-5 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
+                LOGIN
+              </h2>
             </div>
           </div>
 

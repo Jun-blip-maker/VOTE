@@ -15,14 +15,15 @@ const Delegates = () => {
   const schools = [
     "School of Business and Economics",
     "School of Pure and Applied Science",
-    "School of Education of Art",
+    "School of Education Art",
     "School of Education Science",
   ];
 
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/candidates");
+        // FIXED: Use the correct endpoint that returns approved candidates
+        const response = await fetch("http://localhost:5000/api/results");
 
         if (!response.ok) {
           throw new Error(`Failed to load candidates: ${response.status}`);
@@ -30,6 +31,14 @@ const Delegates = () => {
 
         const data = await response.json();
         console.log("Candidates loaded:", data); // Debug log
+
+        // ADDED: Debug each candidate's faculty
+        data.forEach((candidate) => {
+          console.log(
+            `Candidate: ${candidate.full_name}, Faculty: "${candidate.faculty}"`
+          );
+        });
+
         setCandidates(data);
         setIsLoading(false);
       } catch (err) {
@@ -41,16 +50,49 @@ const Delegates = () => {
     fetchCandidates();
   }, []);
 
-  // Group candidates by school/faculty - with better matching
+  // FIXED: Improved faculty matching logic
   const candidatesBySchool = schools.reduce((acc, school) => {
     acc[school] = candidates.filter((candidate) => {
-      // Try multiple ways to match the school
-      const candidateSchool = candidate.faculty || candidate.school || "";
-      return (
-        candidateSchool.toLowerCase().includes(school.toLowerCase()) ||
-        school.toLowerCase().includes(candidateSchool.toLowerCase())
-      );
+      const candidateFaculty = (
+        candidate.faculty ||
+        candidate.school ||
+        ""
+      ).trim();
+
+      // FIXED: Exact match first
+      if (candidateFaculty === school) {
+        console.log(`Exact match: ${candidate.full_name} -> ${school}`);
+        return true;
+      }
+
+      // FIXED: More flexible partial matching
+      const schoolLower = school.toLowerCase();
+      const facultyLower = candidateFaculty.toLowerCase();
+
+      // Check if faculty contains key words from school name
+      const isMatch =
+        facultyLower.includes(schoolLower) ||
+        schoolLower.includes(facultyLower) ||
+        // Additional specific matching for common abbreviations
+        (schoolLower.includes("business") &&
+          facultyLower.includes("business")) ||
+        (schoolLower.includes("science") && facultyLower.includes("science")) ||
+        (schoolLower.includes("education") &&
+          facultyLower.includes("education")) ||
+        (schoolLower.includes("art") && facultyLower.includes("art"));
+
+      if (isMatch) {
+        console.log(
+          `Match found: ${candidate.full_name} (${candidateFaculty}) -> ${school}`
+        );
+      }
+
+      return isMatch;
     });
+
+    // Debug: Log how many candidates found for each school
+    console.log(`${school}: ${acc[school].length} candidates`);
+
     return acc;
   }, {});
 
@@ -152,7 +194,7 @@ const Delegates = () => {
                     {candidatesBySchool[school] &&
                     candidatesBySchool[school].length > 0 ? (
                       <select
-                        className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-50 focus:border-green-50"
                         onChange={handleCandidateSelect}
                         defaultValue=""
                       >
@@ -168,8 +210,8 @@ const Delegates = () => {
                         ))}
                       </select>
                     ) : (
-                      <div className="bg-yellow-50 p-4 rounded-md">
-                        <p className="text-yellow-700 italic">
+                      <div className="bg-green-50 p-4 rounded-md">
+                        <p className="text-green-700 italic">
                           No delegates available for this school.
                           <br />
                           <span className="text-sm">
@@ -183,8 +225,8 @@ const Delegates = () => {
               </div>
             ) : (
               <form onSubmit={handleSubmitVote} className="space-y-6">
-                <div className="bg-indigo-50 p-4 rounded-lg">
-                  <h3 className="text-sm font-medium text-indigo-800">
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h3 className="text-sm font-medium text-green-800">
                     Selected Candidate
                   </h3>
                   <div className="mt-2">
@@ -217,7 +259,7 @@ const Delegates = () => {
                     name="fullName"
                     id="fullName"
                     required
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-green focus:border-green-500 sm:text-sm"
                     value={voterData.fullName}
                     onChange={handleVoterChange}
                   />
@@ -235,7 +277,7 @@ const Delegates = () => {
                     name="registrationNumber"
                     id="registrationNumber"
                     required
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
                     value={voterData.registrationNumber}
                     onChange={handleVoterChange}
                   />
@@ -245,13 +287,13 @@ const Delegates = () => {
                   <button
                     type="button"
                     onClick={() => setSelectedCandidate(null)}
-                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                   >
                     Back
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring--500"
                   >
                     Submit Vote
                   </button>

@@ -53,7 +53,7 @@ def init_delegate_db():
                 full_name TEXT NOT NULL,
                 registration_number TEXT UNIQUE NOT NULL,
                 faculty TEXT NOT NULL,
-                position TEXT,
+                position TEXT DEFAULT 'Delegate',
                 votes INTEGER DEFAULT 0,
                 FOREIGN KEY (delegate_id) REFERENCES delegates (id)
             )
@@ -225,6 +225,61 @@ def get_delegates():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# FIXED: NEW CANDIDATES ENDPOINT - This is what your frontend needs
+@delegate_bp.route("/api/candidates", methods=["GET"])
+def get_candidates():
+    """Get all approved candidates for voting"""
+    try:
+        with get_db_connection() as conn:
+            # Check which columns exist
+            cursor = conn.execute("PRAGMA table_info(candidates)")
+            columns = [column['name'] for column in cursor.fetchall()]
+            
+            # Build query based on available columns
+            select_fields = ["c.id", "c.full_name", "c.registration_number", "c.faculty"]
+            
+            if 'position' in columns:
+                select_fields.append("c.position")
+            else:
+                select_fields.append("'Delegate' as position")
+                
+            if 'votes' in columns:
+                select_fields.append("c.votes")
+            else:
+                select_fields.append("0 as votes")
+            
+            query = f"""
+                SELECT {', '.join(select_fields)}
+                FROM candidates c
+                JOIN delegates d ON c.delegate_id = d.id
+                WHERE d.is_approved = 1 AND d.is_active = 1
+                ORDER BY c.full_name
+            """
+            
+            rows = conn.execute(query).fetchall()
+            candidates = []
+            
+            for row in rows:
+                candidate = dict(row)
+                candidates.append({
+                    "id": candidate["id"],
+                    "full_name": candidate["full_name"],
+                    "registration_number": candidate["registration_number"],
+                    "faculty": candidate["faculty"],
+                    "position": candidate.get("position", "Delegate"),
+                    "votes": candidate.get("votes", 0)
+                })
+            
+            print(f"Returning {len(candidates)} approved candidates")
+            for candidate in candidates:
+                print(f"Candidate: {candidate['full_name']} - Faculty: {candidate['faculty']}")
+                
+            return jsonify(candidates)
+            
+    except Exception as e:
+        print(f"Error in get_candidates: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # Debug delegates
 @delegate_bp.route("/api/debug/delegates", methods=["GET"])
 def debug_delegates():
@@ -237,52 +292,64 @@ def debug_delegates():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Get all candidates - FIXED: Handle missing columns
-@delegate_bp.route("/api/candidates", methods=["GET"])
-def get_candidates():
+# Debug candidates - FIXED: Handle missing columns
+@delegate_bp.route("/api/debug/candidates", methods=["GET"])
+def debug_candidates():
+    """Debug endpoint to see all candidates and their faculties"""
     try:
         with get_db_connection() as conn:
-            # Check which columns exist in the candidates table
-            cursor = conn.execute("PRAGMA table_info(candidates)")
-            columns = [column['name'] for column in cursor.fetchall()]
-            
-            # Build query based on available columns
-            select_fields = ["c.id", "c.full_name", "c.registration_number", "c.faculty"]
-            
-            if 'position' in columns:
-                select_fields.append("c.position")
-            else:
-                select_fields.append("NULL as position")
-                
-            if 'votes' in columns:
-                select_fields.append("c.votes")
-            else:
-                select_fields.append("0 as votes")
-            
-            query = f"""
-                SELECT {', '.join(select_fields)}
+            query = """
+                SELECT c.id, c.full_name, c.registration_number, c.faculty, 
+                       c.position, c.votes, d.is_approved
                 FROM candidates c
                 JOIN delegates d ON c.delegate_id = d.id
-                WHERE d.is_approved = 1
             """
             
-            candidates = []
             rows = conn.execute(query).fetchall()
+            candidates = [dict(row) for row in rows]
             
-            for row in rows:
-                candidate = dict(row)
-                candidates.append({
-                    "id": candidate["id"],
-                    "full_name": candidate["full_name"],
-                    "registration_number": candidate["registration_number"],
-                    "faculty": candidate["faculty"],
-                    "position": candidate["position"],
-                    "votes": candidate.get("votes", 0)
-                })
-                
-        return jsonify(candidates)
+        return jsonify({
+            "total_candidates": len(candidates),
+            "candidates": candidates,
+            "approved_candidates": [c for c in candidates if c["is_approved"] == 1]
+        })
     except Exception as e:
-        print(f"Error fetching candidates: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# NEW: Enhanced debug endpoint
+@delegate_bp.route("/api/debug/all-data", methods=["GET"])
+def debug_all_data():
+    """Debug endpoint to see all data and relationships"""
+    try:
+        with get_db_connection() as conn:
+            # Get all delegates
+            delegates = [dict(row) for row in conn.execute(
+                "SELECT id, full_name, registration_number, faculty, is_approved FROM delegates"
+            ).fetchall()]
+            
+            # Get all candidates with delegate info
+            candidates_query = """
+                SELECT c.id, c.full_name, c.registration_number, c.faculty as candidate_faculty,
+                       c.position, c.votes, d.faculty as delegate_faculty, d.is_approved
+                FROM candidates c
+                JOIN delegates d ON c.delegate_id = d.id
+            """
+            candidates = [dict(row) for row in conn.execute(candidates_query).fetchall()]
+            
+            # Get voting stats
+            vote_count = conn.execute("SELECT COUNT(*) as count FROM votes").fetchone()["count"]
+            
+            return jsonify({
+                "delegates_total": len(delegates),
+                "delegates_approved": len([d for d in delegates if d["is_approved"] == 1]),
+                "candidates_total": len(candidates),
+                "candidates_from_approved_delegates": len([c for c in candidates if c["is_approved"] == 1]),
+                "total_votes": vote_count,
+                "delegates": delegates,
+                "candidates": candidates
+            })
+            
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # Submit a vote
@@ -337,8 +404,7 @@ def submit_vote():
         print(f"Error submitting vote: {e}")
         return jsonify({"error": str(e)}), 500
 
-# COMBINED: Approve delegate AND create candidate
-# In your approve_delegate function, make sure the faculty is correctly mapped:
+# FIXED: Improved approve delegate function
 @delegate_bp.route("/api/delegates/<delegate_id>/approve", methods=["PUT"])
 def approve_delegate(delegate_id):
     try:
@@ -352,6 +418,8 @@ def approve_delegate(delegate_id):
             if not delegate:
                 return jsonify({"error": "Delegate not found"}), 404
                 
+            print(f"Approving delegate: {delegate['full_name']} from faculty: {delegate['faculty']}")
+                
             # Check if candidate already exists
             existing_candidate = conn.execute(
                 "SELECT id FROM candidates WHERE delegate_id = ?",
@@ -360,34 +428,53 @@ def approve_delegate(delegate_id):
             
             # Create candidate if doesn't exist
             if not existing_candidate:
-                # Map faculty to the correct school names that match your frontend
-                faculty = delegate["faculty"]
+                # FIXED: Correct faculty mapping that matches frontend exactly
+                faculty = delegate["faculty"].strip()
                 
-                # Ensure the faculty names match exactly what your frontend expects
+                # Map database faculty values to frontend school names
                 faculty_mapping = {
                     "Business": "School of Business and Economics",
                     "Science": "School of Pure and Applied Science", 
-                    "Arts": "School of Education of Art",
-                    "Education": "School of Education Science"
+                    "Arts": "School of Education Art",
+                    "Education": "School of Education Science",
+                    # Add variations that might be in your database
+                    "School of Business": "School of Business and Economics",
+                    "School of Applied Science": "School of Pure and Applied Science",
+                    "School of Arts": "School of Education Art",
+                    "School of Education": "School of Education Science",
+                    "Business and Economics": "School of Business and Economics",
+                    "Pure and Applied Science": "School of Pure and Applied Science",
+                    "Education Art": "School of Education Art",
+                    "Education Science": "School of Education Science"
                 }
                 
-                # Use mapped faculty name or original if not in mapping
+                # Use mapped faculty name or keep original if no mapping found
                 mapped_faculty = faculty_mapping.get(faculty, faculty)
                 
-                # Check if position column exists
+                print(f"Original faculty: '{faculty}' -> Mapped faculty: '{mapped_faculty}'")
+                
+                # Ensure database has required columns
                 cursor = conn.execute("PRAGMA table_info(candidates)")
                 columns = [column['name'] for column in cursor.fetchall()]
                 
-                if 'position' in columns:
-                    conn.execute(
-                        "INSERT INTO candidates (delegate_id, full_name, registration_number, faculty, position) VALUES (?, ?, ?, ?, ?)",
-                        [delegate["id"], delegate["full_name"], delegate["registration_number"], mapped_faculty, "Delegate"]
-                    )
-                else:
-                    conn.execute(
-                        "INSERT INTO candidates (delegate_id, full_name, registration_number, faculty) VALUES (?, ?, ?, ?)",
-                        [delegate["id"], delegate["full_name"], delegate["registration_number"], mapped_faculty]
-                    )
+                # Add missing columns if they don't exist
+                if 'position' not in columns:
+                    conn.execute("ALTER TABLE candidates ADD COLUMN position TEXT DEFAULT 'Delegate'")
+                    print("Added position column to candidates table")
+                
+                if 'votes' not in columns:
+                    conn.execute("ALTER TABLE candidates ADD COLUMN votes INTEGER DEFAULT 0")
+                    print("Added votes column to candidates table")
+                
+                # Insert candidate with correct faculty mapping
+                conn.execute(
+                    "INSERT INTO candidates (delegate_id, full_name, registration_number, faculty, position, votes) VALUES (?, ?, ?, ?, ?, ?)",
+                    [delegate["id"], delegate["full_name"], delegate["registration_number"], mapped_faculty, "Delegate", 0]
+                )
+                
+                print(f"Candidate created: {delegate['full_name']} with faculty: '{mapped_faculty}'")
+            else:
+                print(f"Candidate already exists for delegate {delegate['full_name']}")
             
             # Update delegate approval status
             conn.execute(
@@ -396,10 +483,12 @@ def approve_delegate(delegate_id):
             )
             
             conn.commit()
+            print(f"Delegate {delegate['full_name']} approved successfully")
             
         return jsonify({"message": "Delegate approved and added as candidate successfully"}), 200
         
     except Exception as e:
+        print(f"Error in approve_delegate: {e}")
         return jsonify({"error": str(e)}), 500
 
 # Get voting results - FIXED: Handle missing columns
@@ -446,7 +535,7 @@ def fix_database():
             
             if 'position' not in columns:
                 print("Adding position column to candidates table")
-                conn.execute("ALTER TABLE candidates ADD COLUMN position TEXT")
+                conn.execute("ALTER TABLE candidates ADD COLUMN position TEXT DEFAULT 'Delegate'")
             
             if 'votes' not in columns:
                 print("Adding votes column to candidates table")
@@ -455,6 +544,41 @@ def fix_database():
             conn.commit()
             
         return jsonify({"message": "Database schema updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# NEW: Fix existing candidate faculties to match frontend
+@delegate_bp.route("/api/fix-candidate-faculties", methods=["POST"])
+def fix_candidate_faculties():
+    """Fix existing candidates' faculty names to match frontend expectations"""
+    try:
+        with get_db_connection() as conn:
+            # Faculty mapping
+            faculty_mapping = {
+                "Business": "School of Business and Economics",
+                "Science": "School of Pure and Applied Science", 
+                "Arts": "School of Education Art",
+                "Education": "School of Education Science"
+            }
+            
+            updated_count = 0
+            
+            for old_faculty, new_faculty in faculty_mapping.items():
+                result = conn.execute(
+                    "UPDATE candidates SET faculty = ? WHERE faculty = ?",
+                    [new_faculty, old_faculty]
+                )
+                updated_count += result.rowcount
+                
+                print(f"Updated {result.rowcount} candidates from '{old_faculty}' to '{new_faculty}'")
+            
+            conn.commit()
+            
+            return jsonify({
+                "message": f"Successfully updated {updated_count} candidate faculty names",
+                "mapping": faculty_mapping
+            }), 200
+            
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

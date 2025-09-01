@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import Swal from "sweetalert2";
+import { useNavigate } from "react-router-dom";
 
 function LeaderReg() {
   const [formData, setFormData] = useState({
@@ -9,12 +11,13 @@ function LeaderReg() {
     phone: "",
     email: "",
     yearOfStudy: "",
-    course: "",
+    // Removed course field
     photo: null,
     photoUrl: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { id, value, files } = e.target;
@@ -39,17 +42,17 @@ function LeaderReg() {
     setIsSubmitting(true);
 
     try {
-      // Validation
+      // Validation - match backend requirements
       if (
         !formData.fullName ||
         !formData.regNumber ||
         !formData.phone ||
-        !formData.photo
+        !formData.position // Changed from photo to position
       ) {
         throw new Error("Required fields are missing!");
       }
 
-      // Prepare data with all fields
+      // Prepare JSON data (not FormData)
       const submissionData = {
         fullName: formData.fullName.trim(),
         regNumber: formData.regNumber.trim(),
@@ -58,23 +61,45 @@ function LeaderReg() {
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         yearOfStudy: formData.yearOfStudy.trim(),
-        course: formData.course.trim(),
-        photoUrl: formData.photo.name, // In real app, this would be server path
-        createdAt: new Date().toISOString(),
+        // Removed course field
+        // Photo upload would need separate handling
       };
 
-      // Send to server
-      const response = await fetch("http://localhost:3000/candidates", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(submissionData),
+      // Send to server using the correct leader endpoint
+      const response = await fetch(
+        "http://localhost:5000/api/leaders/register",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json", // Added JSON header
+          },
+          body: JSON.stringify(submissionData),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Registration failed");
+      }
+
+      await Swal.fire({
+        icon: "success",
+        title: "Registration Successful!",
+        html: `
+          <div>
+            <p>Your leader account has been created and is pending approval.</p>
+            <p class="mt-2"><strong>Temporary Password:</strong> ${data.temp_password}</p>
+            <p class="text-sm text-gray-600 mt-2">Use this password to login after your account is approved.</p>
+          </div>
+        `,
+        showConfirmButton: true,
       });
 
-      if (!response.ok) throw new Error("Submission failed");
+      // Redirect to leader signin page
+      navigate("/LeaderSignin");
 
-      alert("Submitted successfully!");
+      // Reset form
       setFormData({
         fullName: "",
         regNumber: "",
@@ -83,34 +108,39 @@ function LeaderReg() {
         phone: "",
         email: "",
         yearOfStudy: "",
-        course: "",
         photo: null,
         photoUrl: "",
       });
     } catch (error) {
-      alert(error.message || "Submission failed. Please try again.");
+      Swal.fire({
+        icon: "error",
+        title: "Registration Failed",
+        text: error.message || "Registration failed. Please try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen    justify-center bg-green-50 py-12 px-4 md:px-10 lg:px-8">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen flex justify-center bg-green-50 py-12 px-4 md:px-10 lg:px-8">
+      <div className="max-w-2xl mx-auto w-full">
         <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
           <div className="p-6 sm:p-8">
             <div className="text-center mb-6">
               <h2 className="mt-6 text-2xl font-extrabold text-gray-900">
-                APPLICATION FORM
+                LEADER APPLICATION FORM
               </h2>
-              <p className="text-gray-500">Fill in your details to register</p>
+              <p className="text-gray-500">
+                Fill in your details to register as a leader
+              </p>
             </div>
 
             <form onSubmit={handleSubmit}>
               {/* Personal Information */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Full Name
+                  Full Name *
                 </label>
                 <input
                   type="text"
@@ -125,7 +155,7 @@ function LeaderReg() {
 
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Registration Number
+                  Registration Number *
                 </label>
                 <input
                   type="text"
@@ -140,7 +170,7 @@ function LeaderReg() {
 
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
+                  Phone Number *
                 </label>
                 <input
                   type="tel"
@@ -175,12 +205,10 @@ function LeaderReg() {
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="school"
-                  placeholder="Select your school"
                   value={formData.school}
                   onChange={handleChange}
-                  required
                 >
-                  <option value="disabled">Select School</option>
+                  <option value="">Select School</option>
                   <option>School of Business and Economics</option>
                   <option>School of Pure and Applied Science</option>
                   <option>School of Education Arts</option>
@@ -209,7 +237,7 @@ function LeaderReg() {
               {/* Position Applying For */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Position
+                  Position *
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -229,10 +257,10 @@ function LeaderReg() {
                 </select>
               </div>
 
-              {/* Photo Upload */}
+              {/* Photo Upload (Optional) */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Photo
+                  Photo (Optional - Not implemented yet)
                 </label>
                 <input
                   type="file"
@@ -240,27 +268,72 @@ function LeaderReg() {
                   id="photo"
                   accept=".jpg,.jpeg,.png"
                   onChange={handleChange}
-                  required
+                  disabled={true} // Disabled until implemented
                 />
                 {formData.photoUrl && (
                   <div className="mt-2">
                     <img
                       src={formData.photoUrl}
                       alt="Preview"
-                      className="max-w-[100px]"
+                      className="max-w-[100px] rounded-md"
                     />
                   </div>
                 )}
+                <p className="text-sm text-gray-500 mt-1">
+                  Photo upload feature is coming soon.
+                </p>
               </div>
 
-              <button
-                type="submit"
-                className="w-full bg-green-700 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition duration-200 disabled:opacity-50"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Submitting..." : "Submit Application"}
-              </button>
+              <div>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
+                    isSubmitting ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <svg
+                        className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 极 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Registering...
+                    </>
+                  ) : (
+                    "Register as Leader"
+                  )}
+                </button>
+              </div>
             </form>
+
+            <div className="text-center text-sm text-gray-600">
+              <p>
+                Already registered?{" "}
+                <a
+                  href="/LeaderSignin"
+                  className="font-medium text-green-600 hover:text-green-500"
+                >
+                  Sign in here
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       </div>

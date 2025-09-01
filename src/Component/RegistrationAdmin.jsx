@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faPlus,
+  faCheckCircle,
+  faTimesCircle,
   faSyncAlt,
   faFileAlt,
   faEdit,
@@ -9,90 +10,99 @@ import {
   faTimes,
 } from "@fortawesome/free-solid-svg-icons";
 
-const RegistrationAdmin = () => {
-  const apiUrl = "http://localhost:3000/candidates"; // Adjust the URL as needed
-  const [applicants, setApplicants] = useState([]);
-  const [filteredApplicants, setFilteredApplicants] = useState([]);
+const LeaderAdmin = () => {
+  const apiUrl = "http://localhost:5000/api/leaders"; // Correct leader endpoint
+  const [leaders, setLeaders] = useState([]);
+  const [filteredLeaders, setFilteredLeaders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentApplicant, setCurrentApplicant] = useState({
+  const [currentLeader, setCurrentLeader] = useState({
     id: "",
     fullName: "",
     regNumber: "",
     school: "",
     position: "",
-    transcript: "",
+    phone: "",
+    email: "",
+    yearOfStudy: "",
+    is_approved: false,
   });
 
   useEffect(() => {
-    fetchApplicants();
+    fetchLeaders();
   }, []);
 
   useEffect(() => {
-    const filtered = applicants.filter(
-      (applicant) =>
-        applicant.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        applicant.regNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        applicant.school?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        applicant.position?.toLowerCase().includes(searchTerm.toLowerCase())
+    const filtered = leaders.filter(
+      (leader) =>
+        leader.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leader.regNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leader.school?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leader.position?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-    setFilteredApplicants(filtered);
-  }, [searchTerm, applicants]);
+    setFilteredLeaders(filtered);
+  }, [searchTerm, leaders]);
 
-  const fetchApplicants = async () => {
+  const fetchLeaders = async () => {
     try {
       const response = await fetch(apiUrl);
       if (!response.ok) {
         throw new Error(`Server error: ${response.status}`);
       }
       const data = await response.json();
-      if (!Array.isArray(data)) {
+      if (!Array.isArray(data.leaders)) {
         throw new Error("Invalid data format received");
       }
-      setApplicants(data);
-      setFilteredApplicants(data);
+      setLeaders(data.leaders);
+      setFilteredLeaders(data.leaders);
     } catch (error) {
-      console.error("Error loading applicants:", error);
+      console.error("Error loading leaders:", error);
       alert(`Error: ${error.message}`);
     }
   };
 
-  const viewTranscript = (fileUrl) => {
-    if (!fileUrl) {
-      alert("No transcript file available");
-      return;
+  const approveLeader = async (regNumber) => {
+    try {
+      const response = await fetch(`${apiUrl}/approve/${regNumber}`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Approval failed: ${response.status}`);
+      }
+
+      fetchLeaders();
+      alert("Leader approved successfully");
+    } catch (error) {
+      console.error("Approval error:", error);
+      alert(`Approval failed: ${error.message}`);
     }
-    alert(
-      `Viewing transcript: ${fileUrl}\n\nIn a real application, this would open the file.`
-    );
   };
 
-  const deleteApplicant = async (id) => {
-    if (!confirm("Are you sure you want to delete this applicant?")) return;
+  const rejectLeader = async (id) => {
+    if (!confirm("Are you sure you want to reject this leader?")) return;
     try {
       const response = await fetch(`${apiUrl}/${id}`, {
         method: "DELETE",
       });
       if (!response.ok) {
-        throw new Error(`Delete failed: ${response.status}`);
+        throw new Error(`Rejection failed: ${response.status}`);
       }
-      fetchApplicants();
-      alert("Applicant deleted successfully");
+      fetchLeaders();
+      alert("Leader rejected successfully");
     } catch (error) {
-      console.error("Delete error:", error);
-      alert(`Delete failed: ${error.message}`);
+      console.error("Rejection error:", error);
+      alert(`Rejection failed: ${error.message}`);
     }
   };
 
   const openEditModal = async (id) => {
     try {
-      const response = await fetch(`${apiUrl}/${id}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch applicant: ${response.status}`);
+      const leader = leaders.find((l) => l.id === id);
+      if (leader) {
+        setCurrentLeader(leader);
+        setIsModalOpen(true);
       }
-      const applicant = await response.json();
-      setCurrentApplicant(applicant);
-      setIsModalOpen(true);
     } catch (error) {
       console.error("Error opening edit modal:", error);
       alert(`Error: ${error.message}`);
@@ -102,19 +112,19 @@ const RegistrationAdmin = () => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${apiUrl}/${currentApplicant.id}`, {
+      const response = await fetch(`${apiUrl}/${currentLeader.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(currentApplicant),
+        body: JSON.stringify(currentLeader),
       });
       if (!response.ok) {
         throw new Error(`Update failed: ${response.status}`);
       }
       setIsModalOpen(false);
-      fetchApplicants();
-      alert("Applicant updated successfully");
+      fetchLeaders();
+      alert("Leader updated successfully");
     } catch (error) {
       console.error("Update error:", error);
       alert(`Update failed: ${error.message}`);
@@ -123,7 +133,7 @@ const RegistrationAdmin = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setCurrentApplicant((prev) => ({
+    setCurrentLeader((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -131,7 +141,19 @@ const RegistrationAdmin = () => {
 
   const handleRefresh = () => {
     setSearchTerm("");
-    fetchApplicants();
+    fetchLeaders();
+  };
+
+  const getStatusBadge = (isApproved) => {
+    return isApproved ? (
+      <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
+        Approved
+      </span>
+    ) : (
+      <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded">
+        Pending
+      </span>
+    );
   };
 
   return (
@@ -139,7 +161,7 @@ const RegistrationAdmin = () => {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">
-            Applicants Management
+            Leaders Management
           </h1>
           <a
             href="/voteadmin-page"
@@ -154,7 +176,7 @@ const RegistrationAdmin = () => {
             <div className="flex items-center">
               <input
                 type="text"
-                placeholder="Search applicants..."
+                placeholder="Search leaders..."
                 className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full max-w-md"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -189,7 +211,10 @@ const RegistrationAdmin = () => {
                     Position
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Transcript
+                    Phone
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -197,52 +222,53 @@ const RegistrationAdmin = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredApplicants.length > 0 ? (
-                  filteredApplicants.map((applicant) => (
-                    <tr key={applicant.id} className="hover:bg-gray-50">
+                {filteredLeaders.length > 0 ? (
+                  filteredLeaders.map((leader) => (
+                    <tr key={leader.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {applicant.id || ""}
+                        {leader.id || ""}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {applicant.fullName || ""}
+                          {leader.fullName || ""}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {applicant.regNumber || ""}
+                        {leader.regNumber || ""}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {applicant.school || ""}
+                        {leader.school || ""}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {applicant.position || ""}
+                        {leader.position || ""}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {applicant.transcript ? (
-                          <button
-                            onClick={() => viewTranscript(applicant.transcript)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            <FontAwesomeIcon
-                              icon={faFileAlt}
-                              className="mr-1"
-                            />
-                            View
-                          </button>
-                        ) : (
-                          "N/A"
-                        )}
+                        {leader.phone || ""}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(leader.is_approved)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        {!leader.is_approved && (
+                          <button
+                            onClick={() => approveLeader(leader.regNumber)}
+                            className="text-green-600 hover:text-green-900 mr-3"
+                            title="Approve"
+                          >
+                            <FontAwesomeIcon icon={faCheckCircle} />
+                          </button>
+                        )}
                         <button
-                          onClick={() => openEditModal(applicant.id)}
+                          onClick={() => openEditModal(leader.id)}
                           className="text-blue-600 hover:text-blue-900 mr-3"
+                          title="Edit"
                         >
                           <FontAwesomeIcon icon={faEdit} />
                         </button>
                         <button
-                          onClick={() => deleteApplicant(applicant.id)}
+                          onClick={() => rejectLeader(leader.id)}
                           className="text-red-600 hover:text-red-900"
+                          title="Reject"
                         >
                           <FontAwesomeIcon icon={faTrash} />
                         </button>
@@ -252,10 +278,10 @@ const RegistrationAdmin = () => {
                 ) : (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="8"
                       className="px-6 py-4 text-center text-sm text-gray-500"
                     >
-                      No applicants found
+                      No leaders found
                     </td>
                   </tr>
                 )}
@@ -265,20 +291,19 @@ const RegistrationAdmin = () => {
 
           <div className="p-4 border-t border-gray-200 flex justify-between items-center">
             <div className="text-sm text-gray-500">
-              Showing {filteredApplicants.length} of {applicants.length}{" "}
-              applicants
+              Showing {filteredLeaders.length} of {leaders.length} leaders
             </div>
           </div>
         </div>
       </div>
 
-      {/* Edit Applicant Modal */}
+      {/* Edit Leader Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
             <div className="flex justify-between items-center border-b border-gray-200 px-6 py-4">
               <h3 className="text-lg font-semibold text-gray-800">
-                Edit Applicant
+                Edit Leader
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -289,7 +314,7 @@ const RegistrationAdmin = () => {
             </div>
             <div className="p-6">
               <form onSubmit={handleEditSubmit}>
-                <input type="hidden" name="id" value={currentApplicant.id} />
+                <input type="hidden" name="id" value={currentLeader.id} />
                 <div className="mb-4">
                   <label
                     htmlFor="editName"
@@ -302,7 +327,7 @@ const RegistrationAdmin = () => {
                     id="editName"
                     name="fullName"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={currentApplicant.fullName}
+                    value={currentLeader.fullName}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -318,8 +343,9 @@ const RegistrationAdmin = () => {
                     id="editRegNumber"
                     name="regNumber"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={currentApplicant.regNumber}
+                    value={currentLeader.regNumber}
                     onChange={handleInputChange}
+                    disabled
                   />
                 </div>
                 <div className="mb-4">
@@ -333,9 +359,10 @@ const RegistrationAdmin = () => {
                     id="editSchool"
                     name="school"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={currentApplicant.school}
+                    value={currentLeader.school}
                     onChange={handleInputChange}
                   >
+                    <option value="">Select School</option>
                     <option value="School of Business and Economics">
                       School of Business and Economics
                     </option>
@@ -361,9 +388,10 @@ const RegistrationAdmin = () => {
                     id="editPosition"
                     name="position"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={currentApplicant.position}
+                    value={currentLeader.position}
                     onChange={handleInputChange}
                   >
+                    <option value="">Select Position</option>
                     <option value="ChairPerson">ChairPerson</option>
                     <option value="Vice ChairPerson">Vice ChairPerson</option>
                     <option value="Secretary General">Secretary General</option>
@@ -375,12 +403,44 @@ const RegistrationAdmin = () => {
                     <option value="WellFair Director">WellFair Director</option>
                   </select>
                 </div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="editPhone"
+                    className="block text-gray-700 font-semibold mb-2"
+                  >
+                    Phone
+                  </label>
+                  <input
+                    type="text"
+                    id="editPhone"
+                    name="phone"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    value={currentLeader.phone}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="editEmail"
+                    className="block text-gray-700 font-semibold mb-2"
+                  >
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="editEmail"
+                    name="email"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    value={currentLeader.email}
+                    onChange={handleInputChange}
+                  />
+                </div>
                 <div className="mt-6">
                   <button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md"
                   >
-                    Update Applicant
+                    Update Leader
                   </button>
                 </div>
               </form>
@@ -392,4 +452,4 @@ const RegistrationAdmin = () => {
   );
 };
 
-export default RegistrationAdmin;
+export default LeaderAdmin;
