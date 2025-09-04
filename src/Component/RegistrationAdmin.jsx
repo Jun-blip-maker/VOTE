@@ -11,7 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 const LeaderAdmin = () => {
-  const apiUrl = "http://localhost:5000/api/leaders"; // Correct leader endpoint
+  const apiUrl = "http://localhost:5000/api/leaders";
   const [leaders, setLeaders] = useState([]);
   const [filteredLeaders, setFilteredLeaders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,7 +25,7 @@ const LeaderAdmin = () => {
     phone: "",
     email: "",
     yearOfStudy: "",
-    is_approved: false,
+    status: "pending",
   });
 
   useEffect(() => {
@@ -61,18 +61,25 @@ const LeaderAdmin = () => {
     }
   };
 
-  const approveLeader = async (regNumber) => {
+  const approveLeader = async (leaderId) => {
     try {
-      const response = await fetch(`${apiUrl}/approve/${regNumber}`, {
+      const response = await fetch(`${apiUrl}/approve/${leaderId}`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
       if (!response.ok) {
-        throw new Error(`Approval failed: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || `Approval failed: ${response.status}`
+        );
       }
 
-      fetchLeaders();
-      alert("Leader approved successfully");
+      const result = await response.json();
+      fetchLeaders(); // Refresh the list
+      alert(result.message || "Leader approved successfully");
     } catch (error) {
       console.error("Approval error:", error);
       alert(`Approval failed: ${error.message}`);
@@ -80,16 +87,29 @@ const LeaderAdmin = () => {
   };
 
   const rejectLeader = async (id) => {
-    if (!confirm("Are you sure you want to reject this leader?")) return;
+    if (
+      !window.confirm("Are you sure you want to reject and delete this leader?")
+    )
+      return;
+
     try {
-      const response = await fetch(`${apiUrl}/${id}`, {
-        method: "DELETE",
+      const response = await fetch(`${apiUrl}/reject/${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
+
       if (!response.ok) {
-        throw new Error(`Rejection failed: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || `Rejection failed: ${response.status}`
+        );
       }
-      fetchLeaders();
-      alert("Leader rejected successfully");
+
+      const result = await response.json();
+      fetchLeaders(); // Refresh the list
+      alert(result.message || "Leader rejected and removed successfully");
     } catch (error) {
       console.error("Rejection error:", error);
       alert(`Rejection failed: ${error.message}`);
@@ -100,7 +120,17 @@ const LeaderAdmin = () => {
     try {
       const leader = leaders.find((l) => l.id === id);
       if (leader) {
-        setCurrentLeader(leader);
+        setCurrentLeader({
+          id: leader.id,
+          fullName: leader.fullName || "",
+          regNumber: leader.regNumber || "",
+          school: leader.school || "",
+          position: leader.position || "",
+          phone: leader.phone || "",
+          email: leader.email || "",
+          yearOfStudy: leader.yearOfStudy || "",
+          status: leader.status || "pending",
+        });
         setIsModalOpen(true);
       }
     } catch (error) {
@@ -112,19 +142,30 @@ const LeaderAdmin = () => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${apiUrl}/${currentLeader.id}`, {
+      const response = await fetch(`${apiUrl}/update/${currentLeader.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(currentLeader),
+        body: JSON.stringify({
+          fullName: currentLeader.fullName,
+          school: currentLeader.school,
+          position: currentLeader.position,
+          phone: currentLeader.phone,
+          email: currentLeader.email,
+          yearOfStudy: currentLeader.yearOfStudy,
+        }),
       });
+
       if (!response.ok) {
-        throw new Error(`Update failed: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Update failed: ${response.status}`);
       }
+
+      const result = await response.json();
       setIsModalOpen(false);
-      fetchLeaders();
-      alert("Leader updated successfully");
+      fetchLeaders(); // Refresh the list
+      alert(result.message || "Leader updated successfully");
     } catch (error) {
       console.error("Update error:", error);
       alert(`Update failed: ${error.message}`);
@@ -144,16 +185,27 @@ const LeaderAdmin = () => {
     fetchLeaders();
   };
 
-  const getStatusBadge = (isApproved) => {
-    return isApproved ? (
-      <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
-        Approved
-      </span>
-    ) : (
-      <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded">
-        Pending
-      </span>
-    );
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "approved":
+        return (
+          <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
+            Approved
+          </span>
+        );
+      case "rejected":
+        return (
+          <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded">
+            Rejected
+          </span>
+        );
+      default:
+        return (
+          <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded">
+            Pending
+          </span>
+        );
+    }
   };
 
   return (
@@ -246,12 +298,12 @@ const LeaderAdmin = () => {
                         {leader.phone || ""}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(leader.is_approved)}
+                        {getStatusBadge(leader.status)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {!leader.is_approved && (
+                        {leader.status === "pending" && (
                           <button
-                            onClick={() => approveLeader(leader.regNumber)}
+                            onClick={() => approveLeader(leader.id)}
                             className="text-green-600 hover:text-green-900 mr-3"
                             title="Approve"
                           >
@@ -268,7 +320,7 @@ const LeaderAdmin = () => {
                         <button
                           onClick={() => rejectLeader(leader.id)}
                           className="text-red-600 hover:text-red-900"
-                          title="Reject"
+                          title="Reject & Delete"
                         >
                           <FontAwesomeIcon icon={faTrash} />
                         </button>
@@ -299,22 +351,22 @@ const LeaderAdmin = () => {
 
       {/* Edit Leader Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="flex justify-between items-center border-b border-gray-200 px-6 py-4">
               <h3 className="text-lg font-semibold text-gray-800">
                 Edit Leader
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 transition-colors"
+                aria-label="Close modal"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-6 max-h-[80vh] overflow-y-auto">
               <form onSubmit={handleEditSubmit}>
-                <input type="hidden" name="id" value={currentLeader.id} />
                 <div className="mb-4">
                   <label
                     htmlFor="editName"
@@ -326,9 +378,10 @@ const LeaderAdmin = () => {
                     type="text"
                     id="editName"
                     name="fullName"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={currentLeader.fullName}
                     onChange={handleInputChange}
+                    required
                   />
                 </div>
                 <div className="mb-4">
@@ -342,10 +395,11 @@ const LeaderAdmin = () => {
                     type="text"
                     id="editRegNumber"
                     name="regNumber"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
                     value={currentLeader.regNumber}
                     onChange={handleInputChange}
                     disabled
+                    readOnly
                   />
                 </div>
                 <div className="mb-4">
@@ -358,9 +412,10 @@ const LeaderAdmin = () => {
                   <select
                     id="editSchool"
                     name="school"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={currentLeader.school}
                     onChange={handleInputChange}
+                    required
                   >
                     <option value="">Select School</option>
                     <option value="School of Business and Economics">
@@ -387,9 +442,10 @@ const LeaderAdmin = () => {
                   <select
                     id="editPosition"
                     name="position"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={currentLeader.position}
                     onChange={handleInputChange}
+                    required
                   >
                     <option value="">Select Position</option>
                     <option value="ChairPerson">ChairPerson</option>
@@ -411,10 +467,10 @@ const LeaderAdmin = () => {
                     Phone
                   </label>
                   <input
-                    type="text"
+                    type="tel"
                     id="editPhone"
                     name="phone"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={currentLeader.phone}
                     onChange={handleInputChange}
                   />
@@ -430,15 +486,31 @@ const LeaderAdmin = () => {
                     type="email"
                     id="editEmail"
                     name="email"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={currentLeader.email}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="editYearOfStudy"
+                    className="block text-gray-700 font-semibold mb-2"
+                  >
+                    Year of Study
+                  </label>
+                  <input
+                    type="text"
+                    id="editYearOfStudy"
+                    name="yearOfStudy"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={currentLeader.yearOfStudy}
                     onChange={handleInputChange}
                   />
                 </div>
                 <div className="mt-6">
                   <button
                     type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors"
                   >
                     Update Leader
                   </button>

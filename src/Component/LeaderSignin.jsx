@@ -41,8 +41,12 @@ const LeaderSignin = () => {
       if (!response.ok) {
         if (data.error === "Wrong password") {
           throw new Error("Wrong password. Please try again.");
-        } else if (data.error === "Leader not found") {
-          throw new Error("Leader not found. Please register first.");
+        } else if (
+          data.error.includes("not found") ||
+          data.error.includes("not approved")
+        ) {
+          // Fallback to chosen_leaders_login for not found or not approved cases
+          return await tryChosenLeadersLogin();
         } else if (
           data.error ===
           "Your account is pending admin approval. Please wait for approval."
@@ -54,10 +58,48 @@ const LeaderSignin = () => {
         throw new Error(data.error || "Login failed. Please try again.");
       }
 
-      if (!data.leader.is_approved) {
-        throw new Error(
-          "Your account is pending admin approval. Please wait for approval before logging in."
-        );
+      // No need to check is_approved since login endpoint handles approval status
+      localStorage.setItem("leaderToken", data.token);
+      localStorage.setItem("leaderData", JSON.stringify(data.leader));
+
+      await Swal.fire({
+        icon: "success",
+        title: "Login Successful!",
+        text: "Welcome back, leader!",
+        showConfirmButton: false,
+        timer: 1500,
+      });
+
+      navigate("/delegates-page");
+    } catch (error) {
+      setFormData((prev) => ({ ...prev, password: "" }));
+      Swal.fire({
+        icon: "error",
+        title: "Login Failed",
+        html: error.message.replace(/\n/g, "<br>"),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const tryChosenLeadersLogin = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/leaders/chosen-login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          registrationNumber: formData.registrationNumber,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed. Please try again.");
       }
 
       localStorage.setItem("leaderToken", data.token);
@@ -71,16 +113,11 @@ const LeaderSignin = () => {
         timer: 1500,
       });
 
-      navigate("/leaders-page");
+      navigate("/delegates-page");
     } catch (error) {
-      setFormData((prev) => ({ ...prev, password: "" }));
-      Swal.fire({
-        icon: "error",
-        title: "Login Failed",
-        html: error.message.replace(/\n/g, "<br>"),
-      });
-    } finally {
-      setLoading(false);
+      throw new Error(
+        error.message || "Leader not found. Please register first."
+      );
     }
   };
 
