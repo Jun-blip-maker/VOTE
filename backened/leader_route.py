@@ -840,6 +840,34 @@ def chosen_leaders_login():
             
     except Exception as e:
         return jsonify({"error": f"Login failed: {str(e)}"}), 500
+    
+@leader_bp.route("/api/leaders/by-position/<position>", methods=["GET"])
+def get_leaders_by_position(position):
+    """Get all approved leaders for a specific position"""
+    try:
+        with get_db_connection() as conn:
+            # Get from chosen_leaders table (approved leaders)
+            rows = conn.execute(
+                "SELECT * FROM chosen_leaders WHERE position = ? ORDER BY full_name",
+                (position,)
+            ).fetchall()
+            
+        # Format response
+        leaders = []
+        for row in rows:
+            leader = dict(row)
+            leaders.append({
+                "id": leader["id"],
+                "fullName": leader["full_name"],
+                "regNumber": leader["reg_number"]
+            })
+        
+        response = jsonify({"leaders": leaders})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch leaders: {str(e)}"}), 500
 
 # Export the blueprint
 __all__ = ['leader_bp']

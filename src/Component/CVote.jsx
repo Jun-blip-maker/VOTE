@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 function CVote() {
   // State for form data
@@ -15,9 +15,94 @@ function CVote() {
     sports: "",
   });
 
+  // State for candidates by position
+  const [candidates, setCandidates] = useState({
+    ChairPerson: [],
+    ViceChairPerson: [],
+    SecretaryGeneral: [],
+    FinanceSecretary: [],
+    AcademicDirector: [],
+    SportEntertainmentDirector: [],
+    WellFairDirector: [],
+  });
+
   // State for submission status
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasVoted, setHasVoted] = useState(false);
+
+  // Check if user has already voted
+  useEffect(() => {
+    const checkVoteStatus = async () => {
+      const regNumber = localStorage.getItem("studentRegNumber");
+      if (regNumber) {
+        try {
+          const response = await fetch(
+            `http://localhost:5000/api/votes/check/${regNumber}`
+          );
+          if (response.ok) {
+            const data = await response.json();
+            setHasVoted(data.has_voted);
+          }
+        } catch (error) {
+          console.error("Error checking vote status:", error);
+        }
+      }
+    };
+
+    checkVoteStatus();
+  }, []);
+
+  // Fetch candidates from API
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      try {
+        setIsLoading(true);
+        const positions = [
+          "ChairPerson",
+          "Vice ChairPerson",
+          "Secretary General",
+          "Finance Secretary",
+          "Academic Director",
+          "Sport/Entertainment Director",
+          "WellFair Director",
+        ];
+
+        const candidatesData = {};
+
+        for (const position of positions) {
+          try {
+            const response = await fetch(
+              `http://localhost:5000/api/leaders/by-position/${encodeURIComponent(
+                position
+              )}`
+            );
+            if (response.ok) {
+              const data = await response.json();
+              candidatesData[position.replace(/\s+/g, "").replace("/", "")] =
+                data.leaders;
+            } else {
+              console.error(`Failed to fetch candidates for ${position}`);
+              candidatesData[position.replace(/\s+/g, "").replace("/", "")] =
+                [];
+            }
+          } catch (error) {
+            console.error(`Error fetching ${position}:`, error);
+            candidatesData[position.replace(/\s+/g, "").replace("/", "")] = [];
+          }
+        }
+
+        setCandidates(candidatesData);
+      } catch (error) {
+        console.error("Error fetching candidates:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCandidates();
+  }, []);
 
   // Handle input changes
   const handleChange = (e) => {
@@ -45,8 +130,7 @@ function CVote() {
     setSubmitMessage("");
 
     try {
-      // Replace this URL with your actual API endpoint
-      const response = await fetch("http://localhost:3000/C.votes", {
+      const response = await fetch("http://localhost:5000/api/votes", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -54,12 +138,18 @@ function CVote() {
         body: JSON.stringify(formData),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error("Network response was not ok");
+        throw new Error(data.error || "Network response was not ok");
       }
 
-      const data = await response.json();
       setSubmitMessage("Vote submitted successfully!");
+      setHasVoted(true);
+
+      // Store registration number to prevent duplicate votes
+      localStorage.setItem("studentRegNumber", formData.regnumber);
+
       // Reset form after successful submission
       setFormData({
         name: "",
@@ -75,11 +165,60 @@ function CVote() {
       });
     } catch (error) {
       console.error("Error submitting vote:", error);
-      setSubmitMessage("Failed to submit vote. Please try again.");
+      setSubmitMessage(
+        error.message || "Failed to submit vote. Please try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // Render candidate options for a position
+  const renderCandidateOptions = (positionKey, positionName) => {
+    if (isLoading) {
+      return <option value="">Loading candidates...</option>;
+    }
+
+    if (candidates[positionKey].length === 0) {
+      return <option value="">No candidates available</option>;
+    }
+
+    return [
+      <option key="default" value="">
+        Select candidate for {positionName}
+      </option>,
+      ...candidates[positionKey].map((candidate) => (
+        <option key={candidate.id} value={candidate.regNumber}>
+          {candidate.fullName} ({candidate.regNumber})
+        </option>
+      )),
+    ];
+  };
+
+  if (hasVoted) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+          <div className="text-center">
+            <div className="text-green-500 text-5xl mb-4">✓</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              You've Already Voted
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Thank you for participating in the student elections. Each student
+              can only vote once.
+            </p>
+            <button
+              onClick={() => (window.location.href = "/")}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+            >
+              Return to Home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -242,7 +381,7 @@ function CVote() {
                         Vote for Leadership Positions
                       </h3>
 
-                      {/* Position 1 */}
+                      {/* Chairperson */}
                       <div>
                         <label
                           htmlFor="chairperson"
@@ -258,14 +397,11 @@ function CVote() {
                           value={formData.chairperson}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Yahya Yasin</option>
-                          <option value="candidate2">Yusra Majid</option>
-                          <option value="candidate3">Ikram Matker</option>
+                          {renderCandidateOptions("ChairPerson", "Chairperson")}
                         </select>
                       </div>
 
-                      {/* Position 2 */}
+                      {/* Vice Chairperson */}
                       <div>
                         <label
                           htmlFor="vice_chair"
@@ -281,14 +417,14 @@ function CVote() {
                           value={formData.vice_chair}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Abdullah</option>
-                          <option value="candidate2">Ali issack</option>
-                          <option value="candidate3">Kaltuma Hassan</option>
+                          {renderCandidateOptions(
+                            "ViceChairPerson",
+                            "Vice Chairperson"
+                          )}
                         </select>
                       </div>
 
-                      {/* Position 3 */}
+                      {/* Secretary General */}
                       <div>
                         <label
                           htmlFor="secretary"
@@ -304,20 +440,20 @@ function CVote() {
                           value={formData.secretary}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Suleiman Yussuf</option>
-                          <option value="candidate2">Mohammed Daud</option>
-                          <option value="candidate3">Halima Ali</option>
+                          {renderCandidateOptions(
+                            "SecretaryGeneral",
+                            "Secretary General"
+                          )}
                         </select>
                       </div>
 
-                      {/* Position 4 */}
+                      {/* Finance Secretary */}
                       <div>
                         <label
                           htmlFor="treasurer"
                           className="block text-sm font-medium text-gray-700 mb-1"
                         >
-                          Finance Director
+                          Finance Secretary
                         </label>
                         <select
                           id="treasurer"
@@ -327,20 +463,20 @@ function CVote() {
                           value={formData.treasurer}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Khadijun Ali</option>
-                          <option value="candidate2">Dahabo Dima </option>
-                          <option value="candidate3">Dima Ali</option>
+                          {renderCandidateOptions(
+                            "FinanceSecretary",
+                            "Finance Secretary"
+                          )}
                         </select>
                       </div>
 
-                      {/* Position 5 */}
+                      {/* Academic Director */}
                       <div>
                         <label
                           htmlFor="academic"
                           className="block text-sm font-medium text-gray-700 mb-1"
                         >
-                          Academic Directror
+                          Academic Director
                         </label>
                         <select
                           id="academic"
@@ -350,14 +486,14 @@ function CVote() {
                           value={formData.academic}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Said Abdallah</option>
-                          <option value="candidate2">Kassim Ali</option>
-                          <option value="candidate3">Hashim Abdullah</option>
+                          {renderCandidateOptions(
+                            "AcademicDirector",
+                            "Academic Director"
+                          )}
                         </select>
                       </div>
 
-                      {/* Position 6 */}
+                      {/* Welfare Director */}
                       <div>
                         <label
                           htmlFor="welfare"
@@ -373,14 +509,14 @@ function CVote() {
                           value={formData.welfare}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Aisha Daud</option>
-                          <option value="candidate2">Abdikareem Ali</option>
-                          <option value="candidate3">Salih Hussein</option>
+                          {renderCandidateOptions(
+                            "WellFairDirector",
+                            "Welfare Director"
+                          )}
                         </select>
                       </div>
 
-                      {/* Position 7 */}
+                      {/* Sports and Entertainment Director */}
                       <div>
                         <label
                           htmlFor="sports"
@@ -396,10 +532,10 @@ function CVote() {
                           value={formData.sports}
                           onChange={handleChange}
                         >
-                          <option value="">Select candidate</option>
-                          <option value="candidate1">Najma Feisal</option>
-                          <option value="candidate2">Arafat Adan</option>
-                          <option value="candidate3">Sudeys Abdimalik</option>
+                          {renderCandidateOptions(
+                            "SportEntertainmentDirector",
+                            "Sports and Entertainment Director"
+                          )}
                         </select>
                       </div>
                     </div>
@@ -408,14 +544,18 @@ function CVote() {
                     <div>
                       <button
                         type="submit"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isLoading}
                         className={`inline-flex items-center justify-center w-full px-4 py-4 text-base font-semibold text-white transition-all duration-200 border border-transparent rounded-md focus:outline-none ${
-                          isSubmitting
-                            ? "bg-green-400"
+                          isSubmitting || isLoading
+                            ? "bg-green-400 cursor-not-allowed"
                             : "bg-green-600 hover:bg-green-700 focus:bg-green-700"
                         }`}
                       >
-                        {isSubmitting ? "Submitting..." : "Submit Vote"}
+                        {isSubmitting
+                          ? "Submitting..."
+                          : isLoading
+                          ? "Loading candidates..."
+                          : "Submit Vote"}
                       </button>
                     </div>
                   </div>
