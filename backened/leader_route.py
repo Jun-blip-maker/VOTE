@@ -144,7 +144,8 @@ def register_leader():
     if request.method == "OPTIONS":
         response = jsonify({"status": "ok"})
         response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response, 200
 
     data = request.get_json()
@@ -223,7 +224,8 @@ def login():
     if request.method == "OPTIONS":
         response = jsonify({"status": "ok"})
         response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response, 200
 
     data = request.get_json()
@@ -305,8 +307,15 @@ def login():
     except Exception as e:
         return jsonify({"error": f"Login error: {str(e)}"}), 500
 
-@leader_bp.route("/api/leaders/profile", methods=["GET"])
+@leader_bp.route("/api/leaders/profile", methods=["GET", "OPTIONS"])
 def get_profile():
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         # Get token from Authorization header
         auth_header = request.headers.get('Authorization')
@@ -359,9 +368,16 @@ def get_profile():
     except Exception as e:
         return jsonify({"error": f"Failed to fetch profile: {str(e)}"}), 500
 
-@leader_bp.route("/api/leaders/pending", methods=["GET"])
+@leader_bp.route("/api/leaders/pending", methods=["GET", "OPTIONS"])
 def get_pending_leaders():
     """Get all pending leaders for admin approval"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
@@ -395,6 +411,118 @@ def get_pending_leaders():
     except Exception as e:
         return jsonify({"error": f"Failed to fetch pending leaders: {str(e)}"}), 500
 
+@leader_bp.route("/api/leaders/update/<int:leader_id>", methods=["PUT", "OPTIONS"])
+def update_leader(leader_id):
+    """Update leader information"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "PUT, OPTIONS")
+        return response, 200
+
+    data = request.get_json()
+
+    if not data:
+        response = jsonify({"error": "No data received"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 400
+
+    try:
+        # Validate phone number if provided
+        if data.get("phone"):
+            is_valid, phone_or_error = validate_phone(data["phone"])
+            if not is_valid:
+                response = jsonify({"error": phone_or_error})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 400
+            phone = phone_or_error
+        else:
+            phone = None
+
+        # Validate email if provided
+        if data.get("email"):
+            is_valid, email_or_error = validate_email(data["email"])
+            if not is_valid:
+                response = jsonify({"error": email_or_error})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 400
+            email = email_or_error
+        else:
+            email = ""
+
+        with get_db_connection() as conn:
+            # Check if leader exists
+            row = conn.execute(
+                "SELECT * FROM leaders WHERE id = ?",
+                (leader_id,)
+            ).fetchone()
+            
+            if not row:
+                response = jsonify({"error": "Leader not found"})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 404
+
+            # Update leader information
+            conn.execute(
+                '''
+                UPDATE leaders 
+                SET full_name = ?, school = ?, position = ?, phone = ?, 
+                    email = ?, year_of_study = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                ''',
+                (
+                    str(data.get("fullName", "")).strip(),
+                    str(data.get("school", "")).strip(),
+                    str(data.get("position", "")).strip(),
+                    phone or str(data.get("phone", "")).strip(),
+                    email,
+                    str(data.get("yearOfStudy", "")).strip(),
+                    leader_id
+                )
+            )
+
+            # If leader is approved, also update chosen_leaders table
+            if row["is_approved"] == 1:
+                conn.execute(
+                    '''
+                    UPDATE chosen_leaders 
+                    SET full_name = ?, school = ?, position = ?, phone = ?, 
+                        email = ?, year_of_study = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE original_leader_id = ?
+                    ''',
+                    (
+                        str(data.get("fullName", "")).strip(),
+                        str(data.get("school", "")).strip(),
+                        str(data.get("position", "")).strip(),
+                        phone or str(data.get("phone", "")).strip(),
+                        email,
+                        str(data.get("yearOfStudy", "")).strip(),
+                        leader_id
+                    )
+                )
+
+            conn.commit()
+
+        response = jsonify({
+            "message": "Leader updated successfully",
+            "leader_id": leader_id
+        })
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 200
+
+    except sqlite3.IntegrityError as e:
+        if "UNIQUE constraint failed: leaders.reg_number" in str(e):
+            response = jsonify({"error": "Registration number already exists"})
+        else:
+            response = jsonify({"error": "Database integrity error"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 400
+    except Exception as e:
+        response = jsonify({"error": f"Update failed: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
+
 @leader_bp.route("/api/leaders/approve/<int:leader_id>", methods=["POST", "OPTIONS"])
 def approve_leader(leader_id):
     """Approve a leader and move them to chosen_leaders table"""
@@ -402,6 +530,7 @@ def approve_leader(leader_id):
         response = jsonify({"status": "ok"})
         response.headers.add("Access-Control-Allow-Origin", "*")
         response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response, 200
 
     try:
@@ -415,7 +544,9 @@ def approve_leader(leader_id):
             ).fetchone()
             
             if not row:
-                return jsonify({"error": "Leader not found"}), 404
+                response = jsonify({"error": "Leader not found"})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 404
                 
             leader = dict(row)
             
@@ -426,7 +557,9 @@ def approve_leader(leader_id):
             ).fetchone()
             
             if existing:
-                return jsonify({"error": "Leader already approved"}), 400
+                response = jsonify({"error": "Leader already approved"})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 400
             
             # Update status in original leaders table to approved (1)
             cursor.execute(
@@ -469,9 +602,13 @@ def approve_leader(leader_id):
         return response, 200
         
     except sqlite3.IntegrityError as e:
-        return jsonify({"error": "Leader already approved or duplicate entry"}), 400
+        response = jsonify({"error": "Leader already approved or duplicate entry"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 400
     except Exception as e:
-        return jsonify({"error": f"Approval failed: {str(e)}"}), 500
+        response = jsonify({"error": f"Approval failed: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
 @leader_bp.route("/api/leaders/reject/<int:leader_id>", methods=["POST", "OPTIONS"])
 def reject_leader(leader_id):
@@ -480,6 +617,7 @@ def reject_leader(leader_id):
         response = jsonify({"status": "ok"})
         response.headers.add("Access-Control-Allow-Origin", "*")
         response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response, 200
 
     try:
@@ -491,7 +629,9 @@ def reject_leader(leader_id):
             ).fetchone()
             
             if not row:
-                return jsonify({"error": "Leader not found"}), 404
+                response = jsonify({"error": "Leader not found"})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 404
                 
             leader = dict(row)
             
@@ -518,11 +658,20 @@ def reject_leader(leader_id):
         return response, 200
         
     except Exception as e:
-        return jsonify({"error": f"Rejection failed: {str(e)}"}), 500
+        response = jsonify({"error": f"Rejection failed: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
-@leader_bp.route("/api/leaders/chosen", methods=["GET"])
+@leader_bp.route("/api/leaders/chosen", methods=["GET", "OPTIONS"])
 def get_chosen_leaders():
     """Get all approved/chosen leaders"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
@@ -556,9 +705,16 @@ def get_chosen_leaders():
     except Exception as e:
         return jsonify({"error": f"Failed to fetch chosen leaders: {str(e)}"}), 500
 
-@leader_bp.route("/api/leaders", methods=["GET"])
+@leader_bp.route("/api/leaders", methods=["GET", "OPTIONS"])
 def get_all_leaders():
     """Get all leaders from original table (for admin overview)"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
@@ -590,11 +746,20 @@ def get_all_leaders():
         return response, 200
         
     except Exception as e:
-        return jsonify({"error": f"Failed to fetch leaders: {str(e)}"}), 500
+        response = jsonify({"error": f"Failed to fetch leaders: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
-@leader_bp.route("/api/leaders/by-position/<position>", methods=["GET"])
+@leader_bp.route("/api/leaders/by-position/<position>", methods=["GET", "OPTIONS"])
 def get_leaders_by_position(position):
     """Get all approved leaders for a specific position"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         with get_db_connection() as conn:
             # Get from chosen_leaders table (approved leaders)
@@ -624,11 +789,20 @@ def get_leaders_by_position(position):
         return response, 200
         
     except Exception as e:
-        return jsonify({"error": f"Failed to fetch leaders: {str(e)}"}), 500
+        response = jsonify({"error": f"Failed to fetch leaders: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
-@leader_bp.route("/api/leaders/approved", methods=["GET"])
+@leader_bp.route("/api/leaders/approved", methods=["GET", "OPTIONS"])
 def get_approved_leaders():
     """Get all approved leaders from chosen_leaders table"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
@@ -656,11 +830,20 @@ def get_approved_leaders():
         return response, 200
         
     except Exception as e:
-        return jsonify({"error": f"Failed to fetch approved leaders: {str(e)}"}), 500
+        response = jsonify({"error": f"Failed to fetch approved leaders: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
-@leader_bp.route("/api/leaders/debug", methods=["GET"])
+@leader_bp.route("/api/leaders/debug", methods=["GET", "OPTIONS"])
 def debug_leaders():
     """Debug endpoint to see all tables"""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        return response, 200
+
     try:
         with get_db_connection() as conn:
             pending_leaders = conn.execute("SELECT id, reg_number, full_name, status, is_approved FROM leaders").fetchall()
@@ -674,7 +857,9 @@ def debug_leaders():
             response.headers.add("Access-Control-Allow-Origin", "*")
             return response, 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        response = jsonify({"error": str(e)})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
 # Export the blueprint
 __all__ = ['leader_bp']

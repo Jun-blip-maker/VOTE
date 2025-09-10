@@ -3,9 +3,9 @@ import React, { useState, useEffect } from "react";
 function CVote() {
   // State for form data
   const [formData, setFormData] = useState({
-    name: "",
-    regnumber: "",
-    delegate: "",
+    voter_name: "",
+    voter_reg_number: "",
+    voter_school: "",
     chairperson: "",
     vice_chair: "",
     secretary: "",
@@ -24,26 +24,17 @@ function CVote() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [hasVoted, setHasVoted] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(""); // For debugging
 
   // Position mapping - maps form field names to database position names
   const positionMap = {
-    chairperson: ["ChairPerson", "chairperson", "chair"],
-    vice_chair: ["Vice ChairPerson", "vice chair", "vice chairperson", "vice"],
-    secretary: ["Secretary General", "secretary", "secretary general"],
-    treasurer: [
-      "Finance Secretary",
-      "treasurer",
-      "finance secretary",
-      "finance",
-    ],
-    academic: ["Academic Director", "academic", "academic director"],
-    welfare: ["WellFair Director", "welfare", "welfare director", "wellfair"],
-    sports: [
-      "Sport/Entertainment Director",
-      "sports",
-      "sports director",
-      "entertainment director",
-    ],
+    chairperson: "ChairPerson",
+    vice_chair: "Vice ChairPerson",
+    secretary: "Secretary General",
+    treasurer: "Finance Secretary",
+    academic: "Academic Director",
+    welfare: "WellFair Director",
+    sports: "Sport/Entertainment Director",
   };
 
   // Check if user has already voted
@@ -138,33 +129,68 @@ function CVote() {
 
     setIsSubmitting(true);
     setSubmitMessage("");
+    setDebugInfo(""); // Reset debug info
 
     try {
+      // Prepare the data to be sent in the format the backend expects
+      const voteData = {
+        voter_name: formData.voter_name,
+        voter_reg_number: formData.voter_reg_number,
+        voter_school: formData.voter_school,
+        chairperson: formData.chairperson,
+        vice_chair: formData.vice_chair,
+        secretary: formData.secretary,
+        treasurer: formData.treasurer,
+        academic: formData.academic,
+        welfare: formData.welfare,
+        sports: formData.sports,
+      };
+
+      console.log("Submitting vote data:", voteData);
+      setDebugInfo(JSON.stringify(voteData, null, 2));
+
+      // ADD TIMEOUT AND BETTER ERROR HANDLING
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch("http://localhost:5000/api/votes", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(voteData),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      clearTimeout(timeoutId);
 
+      // Check if response is OK before trying to parse JSON
       if (!response.ok) {
-        throw new Error(data.error || "Network response was not ok");
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // If we can't parse JSON, use the response text
+          const errorText = await response.text();
+          throw new Error(`Server error (${response.status}): ${errorText}`);
+        }
+        throw new Error(errorData.error || `Server error: ${response.status}`);
       }
+
+      const data = await response.json();
+      console.log("Server response:", data);
 
       setSubmitMessage("Vote submitted successfully!");
       setHasVoted(true);
 
       // Store registration number to prevent duplicate votes
-      localStorage.setItem("studentRegNumber", formData.regnumber);
+      localStorage.setItem("studentRegNumber", formData.voter_reg_number);
 
       // Reset form after successful submission
       setFormData({
-        name: "",
-        regnumber: "",
-        delegate: "",
+        voter_name: "",
+        voter_reg_number: "",
+        voter_school: "",
         chairperson: "",
         vice_chair: "",
         secretary: "",
@@ -173,11 +199,35 @@ function CVote() {
         welfare: "",
         sports: "",
       });
+
+      // Refresh the page to clear any cached data
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
     } catch (error) {
       console.error("Error submitting vote:", error);
-      setSubmitMessage(
-        error.message || "Failed to submit vote. Please try again."
-      );
+
+      // SPECIFIC ERROR HANDLING FOR CONNECTION ISSUES
+      if (error.name === "AbortError") {
+        setSubmitMessage(
+          "Connection timeout. Server is not responding. Please make sure the voting server is running."
+        );
+      } else if (
+        error.message.includes("Failed to fetch") ||
+        error.message.includes("NetworkError")
+      ) {
+        setSubmitMessage(
+          "Cannot connect to the voting server. Please check that the server is running on http://localhost:5000"
+        );
+      } else if (error.message.includes("already voted")) {
+        setHasVoted(true);
+        localStorage.setItem("studentRegNumber", formData.voter_reg_number);
+        setSubmitMessage(
+          "You have already voted. Each student can only vote once."
+        );
+      } else {
+        setSubmitMessage(`Failed to submit vote: ${error.message}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -185,56 +235,26 @@ function CVote() {
 
   // Find the matching position in the database
   const findMatchingPosition = (fieldName) => {
-    const possibleNames = positionMap[fieldName];
+    const dbPositionName = positionMap[fieldName];
 
-    if (!possibleNames) {
+    if (!dbPositionName) {
       console.error(`No position mapping found for field: ${fieldName}`);
       return null;
     }
 
-    // Try to find a matching position in the database
-    for (const pos of availablePositions) {
-      const normalizedPos = pos.toLowerCase().replace(/\s+/g, "");
-
-      for (const possibleName of possibleNames) {
-        const normalizedPossible = possibleName
-          .toLowerCase()
-          .replace(/\s+/g, "");
-
-        if (normalizedPos === normalizedPossible) {
-          console.log(`Exact match: ${fieldName} to database position: ${pos}`);
-          return pos;
-        }
-      }
-    }
-
-    // If no exact match, try partial matching
-    for (const pos of availablePositions) {
-      const normalizedPos = pos.toLowerCase().replace(/\s+/g, "");
-
-      for (const possibleName of possibleNames) {
-        const normalizedPossible = possibleName
-          .toLowerCase()
-          .replace(/\s+/g, "");
-
-        if (
-          normalizedPos.includes(normalizedPossible) ||
-          normalizedPossible.includes(normalizedPos)
-        ) {
-          console.log(
-            `Partial match: ${fieldName} to database position: ${pos}`
-          );
-          return pos;
-        }
-      }
-    }
-
-    console.warn(
-      `No position found for ${fieldName} with possible names: ${possibleNames.join(
-        ", "
-      )}`
+    // Check if this position exists in available positions
+    const foundPosition = availablePositions.find(
+      (pos) => pos === dbPositionName
     );
-    return null;
+
+    if (!foundPosition) {
+      console.warn(
+        `Position ${dbPositionName} not found in available positions`
+      );
+      return null;
+    }
+
+    return foundPosition;
   };
 
   // Render candidate options for a position
@@ -247,14 +267,18 @@ function CVote() {
     const matchedPosition = findMatchingPosition(fieldName);
 
     if (!matchedPosition) {
-      return <option value="">No candidates available</option>;
+      return (
+        <option value="">No candidates available for {displayName}</option>
+      );
     }
 
     const candidateList = candidates[matchedPosition] || [];
     console.log(`Candidates for ${displayName}:`, candidateList);
 
     if (candidateList.length === 0) {
-      return <option value="">No candidates available</option>;
+      return (
+        <option value="">No candidates available for {displayName}</option>
+      );
     }
 
     return [
@@ -283,8 +307,17 @@ function CVote() {
               can only vote once.
             </p>
             <button
+              onClick={() => {
+                localStorage.removeItem("studentRegNumber");
+                window.location.reload();
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors mr-2"
+            >
+              Clear Vote Record
+            </button>
+            <button
               onClick={() => (window.location.href = "/")}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+              className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
             >
               Return to Home
             </button>
@@ -313,12 +346,21 @@ function CVote() {
                 {submitMessage && (
                   <div
                     className={`p-4 mb-6 rounded-md ${
-                      submitMessage.includes("success")
+                      submitMessage.includes("success") ||
+                      submitMessage.includes("Thank you")
                         ? "bg-green-100 text-green-800"
                         : "bg-red-100 text-red-800"
                     }`}
                   >
                     {submitMessage}
+                  </div>
+                )}
+
+                {/* Debug info - only show in development */}
+                {process.env.NODE_ENV === "development" && debugInfo && (
+                  <div className="p-4 mb-6 bg-gray-100 rounded-md">
+                    <h3 className="font-bold">Debug Info:</h3>
+                    <pre className="text-xs overflow-auto">{debugInfo}</pre>
                   </div>
                 )}
 
@@ -328,7 +370,7 @@ function CVote() {
                     {/* Name Field */}
                     <div>
                       <label
-                        htmlFor="name"
+                        htmlFor="voter_name"
                         className="text-base font-medium text-gray-900"
                       >
                         Full Name
@@ -352,12 +394,12 @@ function CVote() {
                         </div>
                         <input
                           type="text"
-                          id="name"
-                          name="name"
+                          id="voter_name"
+                          name="voter_name"
                           placeholder="Enter your full name"
                           className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600 caret-blue-600"
                           required
-                          value={formData.name}
+                          value={formData.voter_name}
                           onChange={handleChange}
                         />
                       </div>
@@ -366,7 +408,7 @@ function CVote() {
                     {/* Registration Number Field */}
                     <div>
                       <label
-                        htmlFor="regnumber"
+                        htmlFor="voter_reg_number"
                         className="text-base font-medium text-gray-900"
                       >
                         Registration Number
@@ -390,12 +432,12 @@ function CVote() {
                         </div>
                         <input
                           type="text"
-                          id="regnumber"
-                          name="regnumber"
+                          id="voter_reg_number"
+                          name="voter_reg_number"
                           placeholder="Enter your registration number"
                           className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600 caret-blue-600"
                           required
-                          value={formData.regnumber}
+                          value={formData.voter_reg_number}
                           onChange={handleChange}
                         />
                       </div>
@@ -404,7 +446,7 @@ function CVote() {
                     {/* School/Delegate Dropdown */}
                     <div>
                       <label
-                        htmlFor="delegate"
+                        htmlFor="voter_school"
                         className="text-base font-medium text-gray-900"
                       >
                         School/Delegate
@@ -427,11 +469,11 @@ function CVote() {
                           </svg>
                         </div>
                         <select
-                          id="delegate"
-                          name="delegate"
+                          id="voter_school"
+                          name="voter_school"
                           className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600 caret-blue-600 appearance-none"
                           required
-                          value={formData.delegate}
+                          value={formData.voter_school}
                           onChange={handleChange}
                         >
                           <option value="">Select your school/delegate</option>

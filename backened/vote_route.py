@@ -29,50 +29,25 @@ def get_db_connection():
 def init_vote_db():
     """Initialize the votes database tables"""
     with get_db_connection() as conn:
-        # First check if votes table exists and get its structure
+        # Check if votes table exists with the correct structure
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(votes)")
         columns = [row[1] for row in cursor.fetchall()]
         
-        if not columns:
-            # Create votes table if it doesn't exist
-            conn.execute('''
-                CREATE TABLE votes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    voter_name TEXT NOT NULL,
-                    voter_reg_number TEXT NOT NULL,
-                    voter_school TEXT NOT NULL,
-                    chairperson TEXT,
-                    vice_chair TEXT,
-                    secretary TEXT,
-                    treasurer TEXT,
-                    academic TEXT,
-                    welfare TEXT,
-                    sports TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(voter_reg_number)  -- Ensure each student can only vote once
-                )
-            ''')
-            print("Created votes table")
-        else:
-            # Check if voter_reg_number column exists
-            if 'voter_reg_number' not in columns:
-                # Add the missing column
-                conn.execute('ALTER TABLE votes ADD COLUMN voter_reg_number TEXT NOT NULL DEFAULT ""')
-                print("Added voter_reg_number column to votes table")
-            
-            # Check if voter_school column exists
-            if 'voter_school' not in columns:
-                # Add the missing column
-                conn.execute('ALTER TABLE votes ADD COLUMN voter_school TEXT NOT NULL DEFAULT ""')
-                print("Added voter_school column to votes table")
+        # Add position column if it doesn't exist
+        if 'position' not in columns:
+            try:
+                conn.execute('ALTER TABLE votes ADD COLUMN position TEXT')
+                print("Added position column to votes table")
+            except sqlite3.OperationalError as e:
+                print(f"Could not add position column: {e}")
         
-        # Check if vote_results table exists
-        cursor.execute("PRAGMA table_info(vote_results)")
-        columns = [row[1] for row in cursor.fetchall()]
-        
-        if not columns:
-            # Create votes summary table for faster results calculation
+        # Ensure vote_results table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='vote_results'
+        """)
+        if not cursor.fetchone():
             conn.execute('''
                 CREATE TABLE vote_results (
                     position TEXT NOT NULL,
@@ -84,22 +59,6 @@ def init_vote_db():
                 )
             ''')
             print("Created vote_results table")
-        
-        # Create indexes for better performance (only if they don't exist)
-        try:
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_votes_reg_number ON votes(voter_reg_number)')
-        except sqlite3.OperationalError as e:
-            print(f"Index creation warning for voter_reg_number: {e}")
-        
-        try:
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_votes_school ON votes(voter_school)')
-        except sqlite3.OperationalError as e:
-            print(f"Index creation warning for voter_school: {e}")
-            
-        try:
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_vote_results_position ON vote_results(position)')
-        except sqlite3.OperationalError as e:
-            print(f"Index creation warning for vote_results position: {e}")
         
         conn.commit()
         print("Vote database initialization completed successfully!")
@@ -116,12 +75,10 @@ def submit_vote():
         return response, 200
 
     data = request.get_json()
-
-    # ADDED: Debug logging
     print("Received vote data:", data)
 
     # Validate required fields
-    required_fields = ["name", "regnumber", "delegate"]
+    required_fields = ["voter_name", "voter_reg_number", "voter_school"]
     for field in required_fields:
         if field not in data or not data[field]:
             return jsonify({"error": f"{field} is required"}), 400
@@ -131,36 +88,13 @@ def submit_vote():
             # Check if this student has already voted
             existing_vote = conn.execute(
                 "SELECT id FROM votes WHERE voter_reg_number = ?",
-                (data["regnumber"],)
+                (data["voter_reg_number"],)
             ).fetchone()
             
             if existing_vote:
                 return jsonify({"error": "You have already voted. Each student can only vote once."}), 400
 
-            # Insert the vote
-            cursor = conn.cursor()
-            cursor.execute(
-                '''
-                INSERT INTO votes (voter_name, voter_reg_number, voter_school, 
-                                 chairperson, vice_chair, secretary, 
-                                 treasurer, academic, welfare, sports)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''',
-                (
-                    data["name"],
-                    data["regnumber"],
-                    data["delegate"],
-                    data.get("chairperson", ""),
-                    data.get("vice_chair", ""),
-                    data.get("secretary", ""),
-                    data.get("treasurer", ""),
-                    data.get("academic", ""),
-                    data.get("welfare", ""),
-                    data.get("sports", "")
-                )
-            )
-            
-            # Update vote results - FIXED: Better candidate name lookup
+            # Insert votes for each position
             positions = [
                 ("chairperson", data.get("chairperson", "")),
                 ("vice_chair", data.get("vice_chair", "")),
@@ -172,39 +106,38 @@ def submit_vote():
             ]
             
             for position, candidate_reg in positions:
-                if candidate_reg:  # Only update if a candidate was selected
-                    # FIXED: Get candidate name from chosen_leaders using reg_number
+                if candidate_reg:  # Only insert if a candidate was selected
+                    # Get candidate info from chosen_leaders
                     candidate = conn.execute(
-                        "SELECT full_name FROM chosen_leaders WHERE reg_number = ?",
+                        "SELECT id, full_name, reg_number FROM chosen_leaders WHERE reg_number = ?",
                         (candidate_reg,)
                     ).fetchone()
                     
-                    # If not found in chosen_leaders, try leaders table as fallback
-                    if not candidate:
-                        candidate = conn.execute(
-                            "SELECT full_name FROM leaders WHERE reg_number = ? AND status = 'approved'",
-                            (candidate_reg,)
-                        ).fetchone()
-                    
-                    candidate_name = candidate["full_name"] if candidate else "Unknown Candidate"
-                    
-                    # Update or insert vote count
-                    conn.execute(
-                        '''
-                        INSERT INTO vote_results (position, candidate_reg_number, candidate_name, votes)
-                        VALUES (?, ?, ?, 1)
-                        ON CONFLICT(position, candidate_reg_number) 
-                        DO UPDATE SET votes = votes + 1, last_updated = CURRENT_TIMESTAMP
-                        ''',
-                        (position, candidate_reg, candidate_name)
-                    )
+                    if candidate:
+                        # Insert the vote with position
+                        conn.execute(
+                            "INSERT INTO votes (voter_id, candidate_id, voter_reg_number, voter_school, position) VALUES (?, ?, ?, ?, ?)",
+                            (1, candidate["id"], data["voter_reg_number"], data["voter_school"], position)
+                        )
+                        
+                        # Update vote results
+                        conn.execute(
+                            '''
+                            INSERT INTO vote_results (position, candidate_reg_number, candidate_name, votes)
+                            VALUES (?, ?, ?, 1)
+                            ON CONFLICT(position, candidate_reg_number) 
+                            DO UPDATE SET votes = votes + 1, last_updated = CURRENT_TIMESTAMP
+                            ''',
+                            (position, candidate_reg, candidate["full_name"])
+                        )
+                    else:
+                        print(f"Candidate with reg number {candidate_reg} not found in chosen_leaders")
             
             conn.commit()
-            vote_id = cursor.lastrowid
 
         response = jsonify({
             "message": "Vote submitted successfully!",
-            "vote_id": vote_id
+            "details": "Your vote has been recorded for all selected positions."
         })
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 201
@@ -221,12 +154,12 @@ def get_vote_results():
     """Get voting results summary"""
     try:
         with get_db_connection() as conn:
-            # Get total votes cast
+            # Get total votes cast (count distinct voters)
             total_votes = conn.execute(
-                "SELECT COUNT(*) as count FROM votes"
+                "SELECT COUNT(DISTINCT voter_reg_number) as count FROM votes"
             ).fetchone()["count"]
             
-            # Get results by position
+            # Get results by position from vote_results table
             results_by_position = {}
             positions = ["chairperson", "vice_chair", "secretary", "treasurer", "academic", "welfare", "sports"]
             
@@ -246,7 +179,7 @@ def get_vote_results():
             # Get votes by school
             votes_by_school = conn.execute(
                 """
-                SELECT voter_school as school, COUNT(*) as votes 
+                SELECT voter_school as school, COUNT(DISTINCT voter_reg_number) as votes 
                 FROM votes 
                 GROUP BY voter_school 
                 ORDER BY votes DESC
@@ -272,14 +205,14 @@ def check_vote_status(reg_number):
     try:
         with get_db_connection() as conn:
             vote = conn.execute(
-                "SELECT id, created_at FROM votes WHERE voter_reg_number = ?",
+                "SELECT id, voted_at FROM votes WHERE voter_reg_number = ? LIMIT 1",
                 (reg_number,)
             ).fetchone()
             
             if vote:
                 return jsonify({
                     "has_voted": True,
-                    "voted_at": vote["created_at"]
+                    "voted_at": vote["voted_at"]
                 }), 200
             else:
                 return jsonify({
@@ -294,26 +227,47 @@ def get_all_votes():
     """Get all votes (for admin purposes)"""
     try:
         with get_db_connection() as conn:
+            # Get unique votes by voter (latest vote per voter)
             votes = conn.execute(
-                "SELECT * FROM votes ORDER BY created_at DESC"
+                """
+                SELECT v1.* 
+                FROM votes v1
+                INNER JOIN (
+                    SELECT voter_reg_number, MAX(voted_at) as latest_vote
+                    FROM votes
+                    GROUP BY voter_reg_number
+                ) v2 ON v1.voter_reg_number = v2.voter_reg_number AND v1.voted_at = v2.latest_vote
+                ORDER BY v1.voted_at DESC
+                """
             ).fetchall()
             
-            votes_list = [dict(vote) for vote in votes]
+            votes_list = []
+            for vote in votes:
+                vote_dict = dict(vote)
+                # Get voter name from chosen_leaders or use reg number as fallback
+                voter_info = conn.execute(
+                    "SELECT full_name FROM chosen_leaders WHERE reg_number = ?",
+                    (vote_dict["voter_reg_number"],)
+                ).fetchone()
+                
+                vote_dict["voter_name"] = voter_info["full_name"] if voter_info else vote_dict["voter_reg_number"]
+                votes_list.append(vote_dict)
             
         response = jsonify({"votes": votes_list})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 200
         
     except Exception as e:
+        print(f"Error in get_all_votes: {str(e)}")
         return jsonify({"error": f"Failed to fetch votes: {str(e)}"}), 500
 
 @vote_bp.route("/api/votes/count", methods=["GET"])
 def get_vote_count():
-    """Get total vote count"""
+    """Get total vote count (unique voters)"""
     try:
         with get_db_connection() as conn:
             count = conn.execute(
-                "SELECT COUNT(*) as count FROM votes"
+                "SELECT COUNT(DISTINCT voter_reg_number) as count FROM votes"
             ).fetchone()["count"]
             
         return jsonify({"total_votes": count}), 200
@@ -330,9 +284,6 @@ def reset_votes():
         response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
         return response, 200
 
-    # Add authentication/authorization check here in production
-    # For example, check if the request is from an admin user
-    
     try:
         with get_db_connection() as conn:
             conn.execute("DELETE FROM votes")
@@ -358,6 +309,7 @@ def debug_votes():
             
             # Get some sample data
             votes_count = conn.execute("SELECT COUNT(*) as count FROM votes").fetchone()["count"]
+            unique_voters = conn.execute("SELECT COUNT(DISTINCT voter_reg_number) as count FROM votes").fetchone()["count"]
             vote_results_count = conn.execute("SELECT COUNT(*) as count FROM vote_results").fetchone()["count"]
             
             # Check chosen_leaders table
@@ -367,6 +319,7 @@ def debug_votes():
                 "votes_table_columns": [dict(col) for col in votes_columns],
                 "vote_results_table_columns": [dict(col) for col in vote_results_columns],
                 "votes_count": votes_count,
+                "unique_voters_count": unique_voters,
                 "vote_results_count": vote_results_count,
                 "chosen_leaders_count": chosen_leaders_count
             }
@@ -377,24 +330,6 @@ def debug_votes():
         
     except Exception as e:
         return jsonify({"error": f"Debug failed: {str(e)}"}), 500
-
-# NEW: Test connection endpoint
-@vote_bp.route("/api/votes/test-connection", methods=["GET"])
-def test_connection():
-    """Test database connection and chosen_leaders table"""
-    try:
-        with get_db_connection() as conn:
-            # Test chosen_leaders table
-            leaders = conn.execute("SELECT COUNT(*) as count FROM chosen_leaders").fetchone()
-            votes = conn.execute("SELECT COUNT(*) as count FROM votes").fetchone()
-            
-            return jsonify({
-                "chosen_leaders_count": leaders["count"],
-                "votes_count": votes["count"],
-                "status": "Database connection successful"
-            }), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # Export the blueprint
 __all__ = ['vote_bp']
