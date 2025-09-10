@@ -18,6 +18,7 @@ import LeaderReg from "./Component/LeaderReg";
 import RegDropDown from "./Component/RegDropDown";
 import AdminDelegates from "./Component/AdminDelegates";
 import LeaderSignin from "./Component/LeaderSignin";
+import VotesAdmin2 from "./Component/VotesAdmin2";
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
           <Route path="/regdropdown" element={<RegDropDown />} />
           <Route path="/Admin-delegates" element={<AdminDelegates />} />
           <Route path="/leadersignin" element={<LeaderSignin />} />
+          <Route path="/voteadmin2" element={<VotesAdmin2 />} />
         </Route>
 
         <Route>

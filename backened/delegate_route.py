@@ -508,6 +508,38 @@ def approve_delegate(delegate_id):
     except Exception as e:
         print(f"Error in approve_delegate: {e}")
         return jsonify({"error": str(e)}), 500
+    
+@delegate_bp.route("/api/voter-records", methods=["GET"])
+def get_voter_records():
+    """Get all students who voted with their voting timestamp"""
+    try:
+        with get_db_connection() as conn:
+            # Get voter records with voting time
+            voter_records = conn.execute('''
+                SELECT 
+                    v.voted_at as vote_time,  # Wrong table alias
+                    d.registration_number,
+                    d.full_name,
+                    d.faculty
+                FROM votes vt                # Wrong table alias
+                JOIN delegates d ON vt.voter_id = d.id
+                ORDER BY v.voted_at DESC     # Wrong table alias
+            ''').fetchall()
+            
+            records = []
+            for record in voter_records:
+                records.append({
+                    "vote_time": record["vote_time"],
+                    "registration_number": record["registration_number"],
+                    "full_name": record["full_name"],
+                    "faculty": record["faculty"]
+                })
+            
+            return jsonify({"voter_records": records}), 200
+            
+    except Exception as e:
+        print(f"Error getting voter records: {e}")
+        return jsonify({"error": str(e)}), 500    
 
 # Get voting results - FIXED: Handle missing columns
 @delegate_bp.route("/api/results", methods=["GET"])

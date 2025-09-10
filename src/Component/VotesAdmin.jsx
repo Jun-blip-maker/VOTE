@@ -9,17 +9,16 @@ import {
 } from "react-icons/fa";
 
 const API_CONFIG = {
-  BASE_URL: "http://localhost:5000", // Changed from 3000 to 5000
+  BASE_URL: "http://localhost:5000",
   ENDPOINTS: {
-    VOTES: "/api/votes/all",
     VOTE_COUNT: "/api/votes/count",
     VOTE_RESULTS: "/api/votes/results",
     LEADERS: "/api/leaders/approved",
+    RESET: "/api/votes/reset",
   },
 };
 
 const VoteAdmin = () => {
-  const [votes, setVotes] = useState([]);
   const [voteResults, setVoteResults] = useState({});
   const [totalVotes, setTotalVotes] = useState(0);
   const [approvedLeaders, setApprovedLeaders] = useState([]);
@@ -29,14 +28,11 @@ const VoteAdmin = () => {
   // Fetch data from server
   const fetchData = async () => {
     try {
-      const [votesData, voteCountData, resultsData, leadersData] =
-        await Promise.all([
-          fetchVotes(),
-          fetchVoteCount(),
-          fetchVoteResults(),
-          fetchApprovedLeaders(),
-        ]);
-      setVotes(votesData.votes || []);
+      const [voteCountData, resultsData, leadersData] = await Promise.all([
+        fetchVoteCount(),
+        fetchVoteResults(),
+        fetchApprovedLeaders(),
+      ]);
       setTotalVotes(voteCountData.total_votes || 0);
       setVoteResults(resultsData);
       setApprovedLeaders(leadersData.candidates || []);
@@ -47,14 +43,6 @@ const VoteAdmin = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchVotes = async () => {
-    const response = await fetch(
-      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`
-    );
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return await response.json();
   };
 
   const fetchVoteCount = async () => {
@@ -91,10 +79,13 @@ const VoteAdmin = () => {
     }
 
     try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/votes/reset`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.RESET}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
 
       if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -104,20 +95,6 @@ const VoteAdmin = () => {
     } catch (err) {
       setError(err.message);
     }
-  };
-
-  // Calculate school totals from votes
-  const calculateSchoolTotals = () => {
-    const schools = {};
-
-    votes.forEach((vote) => {
-      const school = vote.voter_school;
-      if (school) {
-        schools[school] = (schools[school] || 0) + 1;
-      }
-    });
-
-    return schools;
   };
 
   // Auto-refresh data
@@ -131,8 +108,6 @@ const VoteAdmin = () => {
   if (error)
     return <div className="text-red-500 text-center py-8">Error: {error}</div>;
 
-  const schoolTotals = calculateSchoolTotals();
-
   return (
     <div className="bg-gray-100 min-h-screen">
       <nav
@@ -142,7 +117,7 @@ const VoteAdmin = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <span className="text-xl font-bold">Voting Admin</span>
+              <span className="text-xl font-bold">Leadership Voting Admin</span>
             </div>
             <div className="flex items-center space-x-4">
               <button
@@ -159,7 +134,7 @@ const VoteAdmin = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold text-gray-800 text-center mb-8">
-          Voting Results Dashboard
+          Leadership Voting Results
         </h1>
 
         {/* Summary Cards */}
@@ -179,13 +154,21 @@ const VoteAdmin = () => {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-500">Business & Economics</p>
+                <p className="text-gray-500">Leadership Votes</p>
                 <h3 className="text-2xl font-bold">
-                  {schoolTotals["business"] || 0}
+                  {Object.values(voteResults.results_by_position || {}).reduce(
+                    (total, candidates) =>
+                      total +
+                      candidates.reduce(
+                        (sum, candidate) => sum + (candidate.votes || 0),
+                        0
+                      ),
+                    0
+                  )}
                 </h3>
               </div>
               <div className="bg-green-100 p-3 rounded-full">
-                <FaChartLine className="text-green-600 text-xl" />
+                <FaVoteYea className="text-green-600 text-xl" />
               </div>
             </div>
           </div>
@@ -193,13 +176,13 @@ const VoteAdmin = () => {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-500">Pure & Applied Science</p>
+                <p className="text-gray-500">Positions</p>
                 <h3 className="text-2xl font-bold">
-                  {schoolTotals["science"] || 0}
+                  {Object.keys(voteResults.results_by_position || {}).length}
                 </h3>
               </div>
               <div className="bg-purple-100 p-3 rounded-full">
-                <FaFlask className="text-purple-600 text-xl" />
+                <FaChartLine className="text-purple-600 text-xl" />
               </div>
             </div>
           </div>
@@ -207,74 +190,17 @@ const VoteAdmin = () => {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-500">Education</p>
+                <p className="text-gray-500">Candidates</p>
                 <h3 className="text-2xl font-bold">
-                  {(schoolTotals["education_arts"] || 0) +
-                    (schoolTotals["education_science"] || 0)}
+                  {Object.values(voteResults.results_by_position || {}).reduce(
+                    (total, candidates) => total + candidates.length,
+                    0
+                  )}
                 </h3>
               </div>
               <div className="bg-yellow-100 p-3 rounded-full">
                 <FaGraduationCap className="text-yellow-600 text-xl" />
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* School Results */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Business & Economics */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="bg-blue-600 px-4 py-3">
-              <h3 className="text-lg font-semibold text-white">
-                Business & Economics
-              </h3>
-            </div>
-            <div className="p-4">
-              <p className="text-2xl font-bold text-center">
-                {schoolTotals["business"] || 0} votes
-              </p>
-            </div>
-          </div>
-
-          {/* Pure & Applied Science */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="bg-purple-600 px-4 py-3">
-              <h3 className="text-lg font-semibold text-white">
-                Pure & Applied Science
-              </h3>
-            </div>
-            <div className="p-4">
-              <p className="text-2xl font-bold text-center">
-                {schoolTotals["science"] || 0} votes
-              </p>
-            </div>
-          </div>
-
-          {/* Education Arts */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="bg-yellow-600 px-4 py-3">
-              <h3 className="text-lg font-semibold text-white">
-                Education Arts
-              </h3>
-            </div>
-            <div className="p-4">
-              <p className="text-2xl font-bold text-center">
-                {schoolTotals["education_arts"] || 0} votes
-              </p>
-            </div>
-          </div>
-
-          {/* Education Science */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="bg-red-600 px-4 py-3">
-              <h3 className="text-lg font-semibold text-white">
-                Education Science
-              </h3>
-            </div>
-            <div className="p-4">
-              <p className="text-2xl font-bold text-center">
-                {schoolTotals["education_science"] || 0} votes
-              </p>
             </div>
           </div>
         </div>
@@ -328,53 +254,6 @@ const VoteAdmin = () => {
                       </React.Fragment>
                     )
                   )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Voter Records */}
-        <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
-          <div className="bg-gray-800 px-4 py-3">
-            <h3 className="text-lg font-semibold text-white">Voter Records</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reg Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    School
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {votes.map((vote) => (
-                  <tr key={vote.id || vote.voter_reg_number}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {vote.voter_name || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {vote.voter_reg_number || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {vote.voter_school || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {vote.created_at
-                        ? new Date(vote.created_at).toLocaleString()
-                        : "N/A"}
-                    </td>
-                  </tr>
-                ))}
               </tbody>
             </table>
           </div>
