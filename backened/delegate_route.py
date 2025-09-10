@@ -517,13 +517,13 @@ def get_voter_records():
             # Get voter records with voting time
             voter_records = conn.execute('''
                 SELECT 
-                    v.voted_at as vote_time,  # Wrong table alias
+                    v.voted_at as vote_time,
                     d.registration_number,
                     d.full_name,
                     d.faculty
-                FROM votes vt                # Wrong table alias
+                FROM votes vt
                 JOIN delegates d ON vt.voter_id = d.id
-                ORDER BY v.voted_at DESC     # Wrong table alias
+                ORDER BY v.voted_at DESC
             ''').fetchall()
             
             records = []

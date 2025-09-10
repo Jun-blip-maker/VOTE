@@ -5,40 +5,34 @@ import {
   FaFlask,
   FaGraduationCap,
   FaRedo,
-  FaClock,
 } from "react-icons/fa";
 
 const API_CONFIG = {
   BASE_URL: "http://localhost:5000",
   ENDPOINTS: {
     RESULTS: "/api/results",
-    VOTES: "/api/debug/all-data",
+    VOTES: "/api/debug/all-data", // Using debug endpoint to get voting data
     CANDIDATES: "/api/candidates",
-    VOTER_RECORDS: "/api/voter-records",
   },
 };
 
 const VotesAdmin2 = () => {
   const [votesData, setVotesData] = useState({});
   const [candidates, setCandidates] = useState([]);
-  const [voterRecords, setVoterRecords] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Fetch data from server
   const fetchData = async () => {
     try {
-      const [resultsData, votesData, candidatesData, voterRecordsData] =
-        await Promise.all([
-          fetchResults(),
-          fetchVotesData(),
-          fetchCandidates(),
-          fetchVoterRecords(),
-        ]);
+      const [resultsData, votesData, candidatesData] = await Promise.all([
+        fetchResults(),
+        fetchVotesData(),
+        fetchCandidates(),
+      ]);
 
       setVotesData(votesData);
       setCandidates(candidatesData);
-      setVoterRecords(voterRecordsData);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -49,61 +43,27 @@ const VotesAdmin2 = () => {
   };
 
   const fetchResults = async () => {
-    try {
-      const response = await fetch(
-        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.RESULTS}`
-      );
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.error("Error fetching results:", error);
-      throw error;
-    }
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.RESULTS}`
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
   };
 
   const fetchVotesData = async () => {
-    try {
-      const response = await fetch(
-        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`
-      );
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.error("Error fetching votes data:", error);
-      throw error;
-    }
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
   };
 
   const fetchCandidates = async () => {
-    try {
-      const response = await fetch(
-        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CANDIDATES}`
-      );
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.error("Error fetching candidates:", error);
-      throw error;
-    }
-  };
-
-  const fetchVoterRecords = async () => {
-    try {
-      const response = await fetch(
-        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTER_RECORDS}`
-      );
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      console.log("Voter records data:", data);
-      return data.voter_records || [];
-    } catch (error) {
-      console.error("Error fetching voter records:", error);
-      throw error;
-    }
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CANDIDATES}`
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
   };
 
   // Calculate school totals from candidates
@@ -125,23 +85,14 @@ const VotesAdmin2 = () => {
     return schools;
   };
 
-  // Format date time
-  const formatDateTime = (dateString) => {
-    if (!dateString) return "N/A";
+  // Get voter records from votes data
+  const getVoterRecords = () => {
+    if (!votesData.delegates) return [];
 
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch (error) {
-      return dateString;
-    }
+    return votesData.delegates.filter(
+      (delegate) =>
+        delegate.registration_number && delegate.full_name !== "Voter"
+    );
   };
 
   // Auto-refresh data
@@ -153,19 +104,10 @@ const VotesAdmin2 = () => {
 
   if (loading) return <div className="text-center py-8">Loading...</div>;
   if (error)
-    return (
-      <div className="text-red-500 text-center py-8">
-        Error: {error}
-        <button
-          onClick={fetchData}
-          className="ml-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <div className="text-red-500 text-center py-8">Error: {error}</div>;
 
   const schoolTotals = calculateSchoolTotals();
+  const voterRecords = getVoterRecords();
   const totalVotes = votesData.total_votes || 0;
 
   return (
@@ -182,15 +124,9 @@ const VotesAdmin2 = () => {
               </span>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={fetchData}
-                className="bg-white text-green-800 px-3 py-1 rounded text-sm hover:bg-green-100 flex items-center"
-              >
-                <FaRedo className="mr-1" /> Refresh
-              </button>
               <span className="text-sm">
-                Total Votes: {totalVotes} | Voters:{" "}
-                {Array.isArray(voterRecords) ? voterRecords.length : 0}
+                Total Votes: {totalVotes} | Delegates:{" "}
+                {votesData.delegates_total || 0}
               </span>
             </div>
           </div>
@@ -371,12 +307,9 @@ const VotesAdmin2 = () => {
         {/* Voter Records */}
         <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
           <div className="bg-gray-800 px-4 py-3">
-            <h3 className="text-lg font-semibold text-white">
-              Student Voter Records
-            </h3>
+            <h3 className="text-lg font-semibold text-white">Voter Records</h3>
             <p className="text-gray-300 text-sm">
-              Total Students Voted:{" "}
-              {Array.isArray(voterRecords) ? voterRecords.length : 0}
+              Total Registered Delegates: {voterRecords.length}
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -384,52 +317,36 @@ const VotesAdmin2 = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Vote Time
+                    Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Registration Number
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Student Name
+                    School/Faculty
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    School/Faculty
+                    Status
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {Array.isArray(voterRecords) && voterRecords.length > 0 ? (
-                  voterRecords.map((voter, index) => (
-                    <tr key={index}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <FaClock className="mr-2 text-gray-400" />
-                          {formatDateTime(voter.vote_time)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {voter.registration_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {voter.full_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {voter.faculty || "N/A"}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan="4"
-                      className="px-6 py-4 text-center text-sm text-gray-500"
-                    >
-                      {Array.isArray(voterRecords)
-                        ? "No voting records found"
-                        : "Error loading voter records"}
+                {voterRecords.map((voter) => (
+                  <tr key={voter.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {voter.full_name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {voter.registration_number}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {voter.faculty || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {voter.is_approved ? "Approved" : "Pending"}
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -462,10 +379,8 @@ const VotesAdmin2 = () => {
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-gray-500">Students Voted</p>
-              <p className="text-2xl font-bold">
-                {Array.isArray(voterRecords) ? voterRecords.length : 0}
-              </p>
+              <p className="text-sm text-gray-500">Total Votes Cast</p>
+              <p className="text-2xl font-bold">{totalVotes}</p>
             </div>
           </div>
         </div>
