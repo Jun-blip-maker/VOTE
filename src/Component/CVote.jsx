@@ -15,22 +15,36 @@ function CVote() {
     sports: "",
   });
 
-  // State for candidates by position
-  const [candidates, setCandidates] = useState({
-    ChairPerson: [],
-    ViceChairPerson: [],
-    SecretaryGeneral: [],
-    FinanceSecretary: [],
-    AcademicDirector: [],
-    SportEntertainmentDirector: [],
-    WellFairDirector: [],
-  });
+  // State for candidates by position - will be populated dynamically
+  const [candidates, setCandidates] = useState({});
+  const [availablePositions, setAvailablePositions] = useState([]);
 
   // State for submission status
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [hasVoted, setHasVoted] = useState(false);
+
+  // Position mapping - maps form field names to database position names
+  const positionMap = {
+    chairperson: ["ChairPerson", "chairperson", "chair"],
+    vice_chair: ["Vice ChairPerson", "vice chair", "vice chairperson", "vice"],
+    secretary: ["Secretary General", "secretary", "secretary general"],
+    treasurer: [
+      "Finance Secretary",
+      "treasurer",
+      "finance secretary",
+      "finance",
+    ],
+    academic: ["Academic Director", "academic", "academic director"],
+    welfare: ["WellFair Director", "welfare", "welfare director", "wellfair"],
+    sports: [
+      "Sport/Entertainment Director",
+      "sports",
+      "sports director",
+      "entertainment director",
+    ],
+  };
 
   // Check if user has already voted
   useEffect(() => {
@@ -54,48 +68,44 @@ function CVote() {
     checkVoteStatus();
   }, []);
 
-  // Fetch candidates from API
+  // Fetch ALL approved candidates and group them by position
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
         setIsLoading(true);
-        const positions = [
-          "ChairPerson",
-          "Vice ChairPerson",
-          "Secretary General",
-          "Finance Secretary",
-          "Academic Director",
-          "Sport/Entertainment Director",
-          "WellFair Director",
-        ];
 
-        const candidatesData = {};
+        // Fetch all approved candidates at once
+        const response = await fetch(
+          "http://localhost:5000/api/leaders/approved"
+        );
 
-        for (const position of positions) {
-          try {
-            const response = await fetch(
-              `http://localhost:5000/api/leaders/by-position/${encodeURIComponent(
-                position
-              )}`
-            );
-            if (response.ok) {
-              const data = await response.json();
-              candidatesData[position.replace(/\s+/g, "").replace("/", "")] =
-                data.leaders;
-            } else {
-              console.error(`Failed to fetch candidates for ${position}`);
-              candidatesData[position.replace(/\s+/g, "").replace("/", "")] =
-                [];
-            }
-          } catch (error) {
-            console.error(`Error fetching ${position}:`, error);
-            candidatesData[position.replace(/\s+/g, "").replace("/", "")] = [];
-          }
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
         }
 
-        setCandidates(candidatesData);
+        const data = await response.json();
+        console.log("Fetched candidates data:", data);
+
+        // Group candidates by position
+        const candidatesByPosition = {};
+        const positions = [];
+
+        data.candidates.forEach((candidate) => {
+          if (!candidatesByPosition[candidate.position]) {
+            candidatesByPosition[candidate.position] = [];
+            positions.push(candidate.position);
+          }
+          candidatesByPosition[candidate.position].push(candidate);
+        });
+
+        console.log("Candidates grouped by position:", candidatesByPosition);
+        console.log("Available positions in DB:", positions);
+
+        setCandidates(candidatesByPosition);
+        setAvailablePositions(positions);
       } catch (error) {
         console.error("Error fetching candidates:", error);
+        setSubmitMessage("Error loading candidates. Please refresh the page.");
       } finally {
         setIsLoading(false);
       }
@@ -173,21 +183,85 @@ function CVote() {
     }
   };
 
+  // Find the matching position in the database
+  const findMatchingPosition = (fieldName) => {
+    const possibleNames = positionMap[fieldName];
+
+    if (!possibleNames) {
+      console.error(`No position mapping found for field: ${fieldName}`);
+      return null;
+    }
+
+    // Try to find a matching position in the database
+    for (const pos of availablePositions) {
+      const normalizedPos = pos.toLowerCase().replace(/\s+/g, "");
+
+      for (const possibleName of possibleNames) {
+        const normalizedPossible = possibleName
+          .toLowerCase()
+          .replace(/\s+/g, "");
+
+        if (normalizedPos === normalizedPossible) {
+          console.log(`Exact match: ${fieldName} to database position: ${pos}`);
+          return pos;
+        }
+      }
+    }
+
+    // If no exact match, try partial matching
+    for (const pos of availablePositions) {
+      const normalizedPos = pos.toLowerCase().replace(/\s+/g, "");
+
+      for (const possibleName of possibleNames) {
+        const normalizedPossible = possibleName
+          .toLowerCase()
+          .replace(/\s+/g, "");
+
+        if (
+          normalizedPos.includes(normalizedPossible) ||
+          normalizedPossible.includes(normalizedPos)
+        ) {
+          console.log(
+            `Partial match: ${fieldName} to database position: ${pos}`
+          );
+          return pos;
+        }
+      }
+    }
+
+    console.warn(
+      `No position found for ${fieldName} with possible names: ${possibleNames.join(
+        ", "
+      )}`
+    );
+    return null;
+  };
+
   // Render candidate options for a position
-  const renderCandidateOptions = (positionKey, positionName) => {
+  const renderCandidateOptions = (fieldName, displayName) => {
     if (isLoading) {
       return <option value="">Loading candidates...</option>;
     }
 
-    if (candidates[positionKey].length === 0) {
+    // Find the matching position in the database
+    const matchedPosition = findMatchingPosition(fieldName);
+
+    if (!matchedPosition) {
+      return <option value="">No candidates available</option>;
+    }
+
+    const candidateList = candidates[matchedPosition] || [];
+    console.log(`Candidates for ${displayName}:`, candidateList);
+
+    if (candidateList.length === 0) {
       return <option value="">No candidates available</option>;
     }
 
     return [
       <option key="default" value="">
-        Select candidate for {positionName}
+        Select candidate for {displayName}
       </option>,
-      ...candidates[positionKey].map((candidate) => (
+      ...candidateList.map((candidate) => (
         <option key={candidate.id} value={candidate.regNumber}>
           {candidate.fullName} ({candidate.regNumber})
         </option>
@@ -247,6 +321,8 @@ function CVote() {
                     {submitMessage}
                   </div>
                 )}
+
+                {/* Form Starts */}
                 <form onSubmit={handleSubmit}>
                   <div className="space-y-5">
                     {/* Name Field */}
@@ -397,7 +473,7 @@ function CVote() {
                           value={formData.chairperson}
                           onChange={handleChange}
                         >
-                          {renderCandidateOptions("ChairPerson", "Chairperson")}
+                          {renderCandidateOptions("chairperson", "Chairperson")}
                         </select>
                       </div>
 
@@ -418,7 +494,7 @@ function CVote() {
                           onChange={handleChange}
                         >
                           {renderCandidateOptions(
-                            "ViceChairPerson",
+                            "vice_chair",
                             "Vice Chairperson"
                           )}
                         </select>
@@ -441,7 +517,7 @@ function CVote() {
                           onChange={handleChange}
                         >
                           {renderCandidateOptions(
-                            "SecretaryGeneral",
+                            "secretary",
                             "Secretary General"
                           )}
                         </select>
@@ -464,7 +540,7 @@ function CVote() {
                           onChange={handleChange}
                         >
                           {renderCandidateOptions(
-                            "FinanceSecretary",
+                            "treasurer",
                             "Finance Secretary"
                           )}
                         </select>
@@ -487,7 +563,7 @@ function CVote() {
                           onChange={handleChange}
                         >
                           {renderCandidateOptions(
-                            "AcademicDirector",
+                            "academic",
                             "Academic Director"
                           )}
                         </select>
@@ -510,7 +586,7 @@ function CVote() {
                           onChange={handleChange}
                         >
                           {renderCandidateOptions(
-                            "WellFairDirector",
+                            "welfare",
                             "Welfare Director"
                           )}
                         </select>
@@ -522,7 +598,7 @@ function CVote() {
                           htmlFor="sports"
                           className="block text-sm font-medium text-gray-700 mb-1"
                         >
-                          Sports and Entertainment Director
+                          Sports & Entertainment Director
                         </label>
                         <select
                           id="sports"
@@ -533,8 +609,8 @@ function CVote() {
                           onChange={handleChange}
                         >
                           {renderCandidateOptions(
-                            "SportEntertainmentDirector",
-                            "Sports and Entertainment Director"
+                            "sports",
+                            "Sports & Entertainment Director"
                           )}
                         </select>
                       </div>
@@ -544,22 +620,15 @@ function CVote() {
                     <div>
                       <button
                         type="submit"
-                        disabled={isSubmitting || isLoading}
-                        className={`inline-flex items-center justify-center w-full px-4 py-4 text-base font-semibold text-white transition-all duration-200 border border-transparent rounded-md focus:outline-none ${
-                          isSubmitting || isLoading
-                            ? "bg-green-400 cursor-not-allowed"
-                            : "bg-green-600 hover:bg-green-700 focus:bg-green-700"
-                        }`}
+                        className="inline-flex items-center justify-center w-full px-4 py-4 text-base font-semibold text-white transition-all duration-200 bg-blue-600 border border-transparent rounded-md focus:outline-none hover:bg-blue-700 focus:bg-blue-700"
+                        disabled={isSubmitting}
                       >
-                        {isSubmitting
-                          ? "Submitting..."
-                          : isLoading
-                          ? "Loading candidates..."
-                          : "Submit Vote"}
+                        {isSubmitting ? "Submitting..." : "Submit Vote"}
                       </button>
                     </div>
                   </div>
                 </form>
+                {/* Form Ends */}
               </div>
             </div>
           </div>

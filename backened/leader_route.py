@@ -22,11 +22,12 @@ CORS(leader_bp, resources={
 
 # Configuration
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-strong-secret-key-here')
+DB_PATH = os.path.join(os.getcwd(), "garissa_voting.db")
 
 # Database context manager
 @contextmanager
 def get_db_connection():
-    conn = sqlite3.connect("garissa_voting.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -76,25 +77,14 @@ def init_db():
                     photo_url TEXT,
                     password TEXT NOT NULL,
                     status TEXT DEFAULT 'pending',
+                    is_approved BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-        else:
-            # Check if status column exists, if not add it
-            if 'status' not in columns:
-                conn.execute('ALTER TABLE leaders ADD COLUMN status TEXT DEFAULT "pending"')
-                # Update existing records
-                conn.execute('UPDATE leaders SET status = "pending" WHERE status IS NULL')
-                
-            # Remove any is_approved column if it exists (clean up old schema)
-            if 'is_approved' in columns:
-                try:
-                    conn.execute('ALTER TABLE leaders DROP COLUMN is_approved')
-                except:
-                    pass  # Ignore if column doesn't exist
+ 
         
-        # Create chosen_leaders table - FIXED THE COLUMN NAME
+        # Create chosen_leaders table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS chosen_leaders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,7 +95,7 @@ def init_db():
                 position TEXT NOT NULL,
                 phone TEXT NOT NULL,
                 email TEXT,
-                year_of_study TEXT,  -- FIXED: year_of_study instead of year_of study
+                year_of_study TEXT,
                 photo_url TEXT,
                 password TEXT NOT NULL,
                 is_admin BOOLEAN DEFAULT FALSE,
@@ -120,8 +110,28 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_leaders_reg_number ON leaders(reg_number)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_leaders_email ON leaders(email)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_leaders_status ON leaders(status)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_leaders_is_approved ON leaders(is_approved)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chosen_leaders_reg_number ON chosen_leaders(reg_number)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chosen_leaders_email ON chosen_leaders(email)')
+        
+        # Create trigger to automatically move approved leaders to chosen_leaders
+        conn.execute('''
+            CREATE TRIGGER IF NOT EXISTS after_leader_approval
+            AFTER UPDATE OF is_approved ON leaders
+            FOR EACH ROW
+            WHEN NEW.is_approved = 1 AND OLD.is_approved != 1
+            BEGIN
+                INSERT INTO chosen_leaders (
+                    original_leader_id, full_name, reg_number, school, 
+                    position, phone, email, year_of_study, photo_url, password
+                )
+                VALUES (
+                    NEW.id, NEW.full_name, NEW.reg_number, NEW.school,
+                    NEW.position, NEW.phone, NEW.email, NEW.year_of_study, 
+                    NEW.photo_url, NEW.password
+                );
+            END;
+        ''')
         
         conn.commit()
         print("Database initialization completed successfully!")
@@ -172,8 +182,8 @@ def register_leader():
             cursor.execute(
                 '''
                 INSERT INTO leaders (full_name, reg_number, school, position, phone, email, 
-                                   year_of_study, photo_url, password, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                                   year_of_study, photo_url, password, status, is_approved)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
                 ''',
                 (
                     str(data["fullName"]).strip(),
@@ -232,7 +242,7 @@ def login():
         # Check leaders table first for approved status
         with get_db_connection() as conn:
             row = conn.execute(
-                "SELECT * FROM leaders WHERE reg_number = ? COLLATE NOCASE AND status = 'approved'",
+                "SELECT * FROM leaders WHERE reg_number = ? COLLATE NOCASE AND is_approved = 1",
                 (reg_number,)
             ).fetchone()
 
@@ -355,7 +365,7 @@ def get_pending_leaders():
     try:
         with get_db_connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM leaders WHERE status = 'pending' ORDER BY created_at DESC"
+                "SELECT * FROM leaders WHERE is_approved = 0 ORDER BY created_at DESC"
             ).fetchall()
             
         # Format response
@@ -373,6 +383,7 @@ def get_pending_leaders():
                 "yearOfStudy": leader["year_of_study"],
                 "photoUrl": leader["photo_url"],
                 "status": leader["status"],
+                "is_approved": bool(leader["is_approved"]),
                 "created_at": leader["created_at"],
                 "updated_at": leader["updated_at"]
             })
@@ -399,12 +410,12 @@ def approve_leader(leader_id):
             cursor = conn.cursor()
             # Get leader from pending table
             row = cursor.execute(
-                "SELECT * FROM leaders WHERE id = ? AND status = 'pending'",
+                "SELECT * FROM leaders WHERE id = ?",
                 (leader_id,)
             ).fetchone()
             
             if not row:
-                return jsonify({"error": "Pending leader not found"}), 404
+                return jsonify({"error": "Leader not found"}), 404
                 
             leader = dict(row)
             
@@ -417,11 +428,19 @@ def approve_leader(leader_id):
             if existing:
                 return jsonify({"error": "Leader already approved"}), 400
             
-            # Insert into chosen_leaders table
+            # Update status in original leaders table to approved (1)
+            cursor.execute(
+                "UPDATE leaders SET status = 'approved', is_approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (leader_id,)
+            )
+            
+            # Manually insert into chosen_leaders table (in case trigger doesn't work)
             cursor.execute(
                 '''
-                INSERT INTO chosen_leaders (original_leader_id, full_name, reg_number, school, 
-                                          position, phone, email, year_of_study, photo_url, password)
+                INSERT INTO chosen_leaders (
+                    original_leader_id, full_name, reg_number, school, 
+                    position, phone, email, year_of_study, photo_url, password
+                )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
@@ -438,14 +457,8 @@ def approve_leader(leader_id):
                 )
             )
             
-            # Update status in original leaders table
-            cursor.execute(
-                "UPDATE leaders SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (leader_id,)
-            )
-            
             conn.commit()
-            print(f"Leader {leader_id} approved and moved to chosen_leaders")  # Debug log
+            print(f"Leader {leader_id} approved and moved to chosen_leaders")
             
         response = jsonify({
             "message": "Leader approved successfully",
@@ -456,10 +469,8 @@ def approve_leader(leader_id):
         return response, 200
         
     except sqlite3.IntegrityError as e:
-        conn.rollback()
         return jsonify({"error": "Leader already approved or duplicate entry"}), 400
     except Exception as e:
-        conn.rollback()
         return jsonify({"error": f"Approval failed: {str(e)}"}), 500
 
 @leader_bp.route("/api/leaders/reject/<int:leader_id>", methods=["POST", "OPTIONS"])
@@ -491,7 +502,7 @@ def reject_leader(leader_id):
             )
             
             # If they were approved, remove from chosen_leaders
-            if leader["status"] == "approved":
+            if leader["is_approved"] == 1:
                 conn.execute(
                     "DELETE FROM chosen_leaders WHERE original_leader_id = ?",
                     (leader_id,)
@@ -569,6 +580,7 @@ def get_all_leaders():
                 "yearOfStudy": leader["year_of_study"],
                 "photoUrl": leader["photo_url"],
                 "status": leader["status"],
+                "is_approved": bool(leader["is_approved"]),
                 "created_at": leader["created_at"],
                 "updated_at": leader["updated_at"]
             })
@@ -580,267 +592,6 @@ def get_all_leaders():
     except Exception as e:
         return jsonify({"error": f"Failed to fetch leaders: {str(e)}"}), 500
 
-@leader_bp.route("/api/leaders/update/<int:leader_id>", methods=["PUT", "OPTIONS"])
-def update_leader(leader_id):
-    """Update a leader's information in the leaders table (for pending/rejected leaders)"""
-    if request.method == "OPTIONS":
-        response = jsonify({"status": "ok"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        response.headers.add("Access-Control-Allow-Methods", "PUT, OPTIONS")
-        return response, 200
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    try:
-        with get_db_connection() as conn:
-            # Check if leader exists in leaders table
-            row = conn.execute(
-                "SELECT * FROM leaders WHERE id = ?",
-                (leader_id,)
-            ).fetchone()
-            
-            if not row:
-                return jsonify({"error": "Leader not found"}), 404
-            
-            # Validate and prepare update data
-            update_data = {}
-            
-            # Validate required fields if provided
-            if "fullName" in data:
-                if not data["fullName"].strip():
-                    return jsonify({"error": "Full name cannot be empty"}), 400
-                update_data["full_name"] = data["fullName"].strip()
-            
-            if "position" in data:
-                if not data["position"].strip():
-                    return jsonify({"error": "Position cannot be empty"}), 400
-                update_data["position"] = data["position"].strip()
-            
-            if "phone" in data:
-                is_valid, phone_or_error = validate_phone(data["phone"])
-                if not is_valid:
-                    return jsonify({"error": phone_or_error}), 400
-                update_data["phone"] = phone_or_error
-            
-            if "email" in data:
-                is_valid, email_or_error = validate_email(data["email"])
-                if not is_valid:
-                    return jsonify({"error": email_or_error}), 400
-                update_data["email"] = email_or_error
-            
-            # Optional fields
-            if "school" in data:
-                update_data["school"] = data["school"].strip() if data["school"] else ""
-            
-            if "yearOfStudy" in data:
-                update_data["year_of_study"] = data["yearOfStudy"].strip() if data["yearOfStudy"] else ""
-            
-            if not update_data:
-                return jsonify({"error": "No valid fields to update"}), 400
-            
-            # Build update query
-            set_clauses = []
-            values = []
-            
-            for field, value in update_data.items():
-                set_clauses.append(f"{field} = ?")
-                values.append(value)
-            
-            set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-            values.append(leader_id)
-            
-            query = f"UPDATE leaders SET {', '.join(set_clauses)} WHERE id = ?"
-            
-            # Execute update
-            conn.execute(query, values)
-            conn.commit()
-            
-        response = jsonify({
-            "message": "Leader updated successfully",
-            "leader_id": leader_id
-        })
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 200
-        
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Update failed: {str(e)}"}), 500
-
-@leader_bp.route("/api/leaders/update-chosen/<int:leader_id>", methods=["PUT", "OPTIONS"])
-def update_chosen_leader(leader_id):
-    """Update an approved leader's information in the chosen_leaders table"""
-    if request.method == "OPTIONS":
-        response = jsonify({"status": "ok"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        response.headers.add("Access-Control-Allow-Methods", "PUT, OPTIONS")
-        return response, 200
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    try:
-        with get_db_connection() as conn:
-            # Check if leader exists in chosen_leaders table
-            row = conn.execute(
-                "SELECT * FROM chosen_leaders WHERE original_leader_id = ?",
-                (leader_id,)
-            ).fetchone()
-            
-            if not row:
-                return jsonify({"error": "Approved leader not found"}), 404
-            
-            # Validate and prepare update data
-            update_data = {}
-            
-            # Validate required fields if provided
-            if "fullName" in data:
-                if not data["fullName"].strip():
-                    return jsonify({"error": "Full name cannot be empty"}), 400
-                update_data["full_name"] = data["fullName"].strip()
-            
-            if "position" in data:
-                if not data["position"].strip():
-                    return jsonify({"error": "Position cannot be empty"}), 400
-                update_data["position"] = data["position"].strip()
-            
-            if "phone" in data:
-                is_valid, phone_or_error = validate_phone(data["phone"])
-                if not is_valid:
-                    return jsonify({"error": phone_or_error}), 400
-                update_data["phone"] = phone_or_error
-            
-            if "email" in data:
-                is_valid, email_or_error = validate_email(data["email"])
-                if not is_valid:
-                    return jsonify({"error": email_or_error}), 400
-                update_data["email"] = email_or_error
-            
-            # Optional fields
-            if "school" in data:
-                update_data["school"] = data["school"].strip() if data["school"] else ""
-            
-            if "yearOfStudy" in data:
-                update_data["year_of_study"] = data["yearOfStudy"].strip() if data["yearOfStudy"] else ""
-            
-            if not update_data:
-                return jsonify({"error": "No valid fields to update"}), 400
-            
-            # Build update query for chosen_leaders
-            set_clauses = []
-            values = []
-            
-            for field, value in update_data.items():
-                set_clauses.append(f"{field} = ?")
-                values.append(value)
-            
-            set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-            values.append(leader_id)
-            
-            query = f"UPDATE chosen_leaders SET {', '.join(set_clauses)} WHERE original_leader_id = ?"
-            
-            # Execute update
-            conn.execute(query, values)
-            
-            # Also update the original leaders table to keep them in sync
-            original_set_clauses = []
-            original_values = []
-            
-            for field, value in update_data.items():
-                original_set_clauses.append(f"{field} = ?")
-                original_values.append(value)
-            
-            original_set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-            original_values.append(leader_id)
-            
-            original_query = f"UPDATE leaders SET {', '.join(original_set_clauses)} WHERE id = ?"
-            conn.execute(original_query, original_values)
-            
-            conn.commit()
-            
-        response = jsonify({
-            "message": "Approved leader updated successfully",
-            "leader_id": leader_id
-        })
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 200
-        
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Update failed: {str(e)}"}), 500
-
-@leader_bp.route("/api/leaders/debug", methods=["GET"])
-def debug_leaders():
-    """Debug endpoint to see all tables"""
-    try:
-        with get_db_connection() as conn:
-            pending_leaders = conn.execute("SELECT id, reg_number, full_name, status FROM leaders").fetchall()
-            chosen_leaders = conn.execute("SELECT id, original_leader_id, reg_number, full_name, approved_at FROM chosen_leaders").fetchall()
-            
-            response = jsonify({
-                "database": os.path.abspath("garissa_voting.db"),
-                "pending_leaders": [dict(leader) for leader in pending_leaders],
-                "chosen_leaders": [dict(leader) for leader in chosen_leaders]
-            })
-            response.headers.add("Access-Control-Allow-Origin", "*")
-            return response, 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@leader_bp.route("/api/leaders/chosen-login", methods=["POST"])
-def chosen_leaders_login():
-    """Login for leaders who have been approved and moved to chosen_leaders table"""
-    data = request.get_json()
-    
-    if not data or 'registrationNumber' not in data or 'password' not in data:
-        return jsonify({"error": "Registration number and password required"}), 400
-    
-    try:
-        with get_db_connection() as conn:
-            # Check if leader exists in chosen_leaders table
-            leader = conn.execute(
-                "SELECT * FROM chosen_leaders WHERE reg_number = ?",
-                (data['registrationNumber'],)
-            ).fetchone()
-            
-            if not leader:
-                return jsonify({"error": "Leader not found"}), 404
-            
-            # Verify password (you should use proper password hashing)
-            if leader['password'] != data['password']:
-                return jsonify({"error": "Wrong password"}), 401
-            
-            # Return leader data
-            leader_data = {
-                "id": leader['id'],
-                "fullName": leader['full_name'],
-                "regNumber": leader['reg_number'],
-                "school": leader['school'],
-                "position": leader['position'],
-                "phone": leader['phone'],
-                "email": leader['email'],
-                "yearOfStudy": leader['year_of_study'],
-                "is_approved": True
-            }
-            
-            # Generate token (you should use proper JWT implementation)
-            token = f"chosen_leader_{leader['id']}"
-            
-            return jsonify({
-                "message": "Login successful",
-                "token": token,
-                "leader": leader_data
-            }), 200
-            
-    except Exception as e:
-        return jsonify({"error": f"Login failed: {str(e)}"}), 500
-    
 @leader_bp.route("/api/leaders/by-position/<position>", methods=["GET"])
 def get_leaders_by_position(position):
     """Get all approved leaders for a specific position"""
@@ -859,15 +610,71 @@ def get_leaders_by_position(position):
             leaders.append({
                 "id": leader["id"],
                 "fullName": leader["full_name"],
-                "regNumber": leader["reg_number"]
+                "regNumber": leader["reg_number"],
+                "school": leader["school"],
+                "position": leader["position"],
+                "phone": leader["phone"],
+                "email": leader["email"],
+                "yearOfStudy": leader["year_of_study"],
+                "photoUrl": leader["photo_url"]
             })
         
-        response = jsonify({"leaders": leaders})
+        response = jsonify({"candidates": leaders})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 200
         
     except Exception as e:
         return jsonify({"error": f"Failed to fetch leaders: {str(e)}"}), 500
+
+@leader_bp.route("/api/leaders/approved", methods=["GET"])
+def get_approved_leaders():
+    """Get all approved leaders from chosen_leaders table"""
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM chosen_leaders ORDER BY position, full_name"
+            ).fetchall()
+            
+        # Format response
+        leaders = []
+        for row in rows:
+            leader = dict(row)
+            leaders.append({
+                "id": leader["id"],
+                "fullName": leader["full_name"],
+                "regNumber": leader["reg_number"],
+                "school": leader["school"],
+                "position": leader["position"],
+                "phone": leader["phone"],
+                "email": leader["email"],
+                "yearOfStudy": leader["year_of_study"],
+                "photoUrl": leader["photo_url"]
+            })
+        
+        response = jsonify({"candidates": leaders})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch approved leaders: {str(e)}"}), 500
+
+@leader_bp.route("/api/leaders/debug", methods=["GET"])
+def debug_leaders():
+    """Debug endpoint to see all tables"""
+    try:
+        with get_db_connection() as conn:
+            pending_leaders = conn.execute("SELECT id, reg_number, full_name, status, is_approved FROM leaders").fetchall()
+            chosen_leaders = conn.execute("SELECT id, original_leader_id, reg_number, full_name, approved_at FROM chosen_leaders").fetchall()
+            
+            response = jsonify({
+                "database": os.path.abspath("garissa_voting.db"),
+                "pending_leaders": [dict(leader) for leader in pending_leaders],
+                "chosen_leaders": [dict(leader) for leader in chosen_leaders]
+            })
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            return response, 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Export the blueprint
 __all__ = ['leader_bp']

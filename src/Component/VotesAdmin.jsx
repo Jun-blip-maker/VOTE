@@ -9,85 +9,37 @@ import {
 } from "react-icons/fa";
 
 const API_CONFIG = {
-  BASE_URL: "http://localhost:3000",
+  BASE_URL: "http://localhost:5000", // Changed from 3000 to 5000
   ENDPOINTS: {
-    VOTES: "/votes",
-    VOTERS: "/voters",
-    LEADER_VOTES: "/C.votes",
-  },
-  DEFAULT_VOTES: {
-    Khadijun: 0,
-    Iqra: 0,
-    Abdiaziz: 0,
-    Abdimajid: 0,
-    Atwa: 0,
-    Zaki: 0,
-    Leyla: 0,
-    Sanem: 0,
-    JeyJ: 0,
-    Ali: 0,
-    Yeshi: 0,
-    zuuu: 0,
-  },
-};
-
-// Candidate name mappings (NEW ADDITION)
-const CANDIDATE_MAPPINGS = {
-  chairperson: {
-    candidate1: "Yahya Yasin",
-    candidate2: "Yusra Majid",
-    candidate3: "Ikram Matker",
-  },
-  vice_chair: {
-    candidate1: "Abdullah",
-    candidate2: "Ali issack",
-    candidate3: "Kaltuma Hassan",
-  },
-  secretary: {
-    candidate1: "Suleiman Yussuf",
-    candidate2: "Mohammed Daud",
-    candidate3: "Halima Ali",
-  },
-  treasurer: {
-    candidate1: "Khadijun Ali",
-    candidate2: "Dahabo Dima",
-    candidate3: "Dima Ali",
-  },
-  academic: {
-    candidate1: "Said Abdallah",
-    candidate2: "Kassim Ali",
-    candidate3: "Hashim Abdullah",
-  },
-  welfare: {
-    candidate1: "Aisha Daud",
-    candidate2: "Abdikareem Ali",
-    candidate3: "Salih Hussein",
-  },
-  sports: {
-    candidate1: "Najma Feisal",
-    candidate2: "Arafat Adan",
-    candidate3: "Sudeys Abdimalik",
+    VOTES: "/api/votes/all",
+    VOTE_COUNT: "/api/votes/count",
+    VOTE_RESULTS: "/api/votes/results",
+    LEADERS: "/api/leaders/approved",
   },
 };
 
 const VoteAdmin = () => {
-  const [votes, setVotes] = useState(API_CONFIG.DEFAULT_VOTES);
-  const [voters, setVoters] = useState([]);
-  const [leaderVotes, setLeaderVotes] = useState([]);
+  const [votes, setVotes] = useState([]);
+  const [voteResults, setVoteResults] = useState({});
+  const [totalVotes, setTotalVotes] = useState(0);
+  const [approvedLeaders, setApprovedLeaders] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Fetch data from server
   const fetchData = async () => {
     try {
-      const [votesData, votersData, leaderVotesData] = await Promise.all([
-        fetchVotes(),
-        fetchVoterRecords(),
-        fetchLeaderVotes(),
-      ]);
-      setVotes(votesData);
-      setVoters(votersData);
-      setLeaderVotes(leaderVotesData);
+      const [votesData, voteCountData, resultsData, leadersData] =
+        await Promise.all([
+          fetchVotes(),
+          fetchVoteCount(),
+          fetchVoteResults(),
+          fetchApprovedLeaders(),
+        ]);
+      setVotes(votesData.votes || []);
+      setTotalVotes(voteCountData.total_votes || 0);
+      setVoteResults(resultsData);
+      setApprovedLeaders(leadersData.candidates || []);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -97,100 +49,36 @@ const VoteAdmin = () => {
     }
   };
 
-  // ... [keep all other existing functions exactly the same until calculateLeaderVotes]
-
-  // Modified calculateLeaderVotes function (ONLY CHANGE)
-
   const fetchVotes = async () => {
     const response = await fetch(
       `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`
     );
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    validateVotesData(data);
-    return data;
+    return await response.json();
   };
 
-  const fetchVoterRecords = async () => {
+  const fetchVoteCount = async () => {
     const response = await fetch(
-      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTERS}`
-    );
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    validateVoterRecords(data);
-    return data;
-  };
-
-  const fetchLeaderVotes = async () => {
-    const response = await fetch(
-      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.LEADER_VOTES}`
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTE_COUNT}`
     );
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return await response.json();
   };
 
-  const validateVotesData = (votes) => {
-    if (!votes || typeof votes !== "object") {
-      throw new Error("Invalid votes data structure");
-    }
-    Object.keys(API_CONFIG.DEFAULT_VOTES).forEach((candidate) => {
-      if (votes[candidate] === undefined) {
-        throw new Error(`Missing vote count for candidate: ${candidate}`);
-      }
-    });
+  const fetchVoteResults = async () => {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTE_RESULTS}`
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
   };
 
-  const validateVoterRecords = (voters) => {
-    if (!Array.isArray(voters)) {
-      throw new Error("Voter records should be an array");
-    }
-    voters.forEach((voter) => {
-      if (!voter.name || !voter.regNumber || !voter.votedFor) {
-        throw new Error("Invalid voter record structure");
-      }
-    });
-  };
-
-  const businessTotal = votes.Khadijun + votes.Iqra + votes.Abdiaziz;
-  const scienceTotal = votes.Abdimajid + votes.Atwa + votes.Zaki;
-  const educationTotal =
-    votes.Leyla +
-    votes.Sanem +
-    votes.JeyJ +
-    votes.Ali +
-    votes.Yeshi +
-    votes.zuuu;
-  // Calculate school totals
-  const calculateLeaderVotes = () => {
-    const positions = [
-      "chairperson",
-      "vice_chair",
-      "secretary",
-      "treasurer",
-      "academic",
-      "welfare",
-      "sports",
-    ];
-
-    return positions.map((position) => {
-      const votes = {};
-      leaderVotes.forEach((vote) => {
-        const candidateKey = vote[position];
-        if (candidateKey) {
-          const candidateName =
-            CANDIDATE_MAPPINGS[position]?.[candidateKey] || candidateKey;
-          votes[candidateName] = (votes[candidateName] || 0) + 1;
-        }
-      });
-
-      return {
-        position,
-        candidates: Object.entries(votes).map(([name, count]) => ({
-          name,
-          count,
-        })),
-      };
-    });
+  const fetchApprovedLeaders = async () => {
+    const response = await fetch(
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.LEADERS}`
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
   };
 
   const resetVotes = async () => {
@@ -203,9 +91,14 @@ const VoteAdmin = () => {
     }
 
     try {
-      await resetVoteCounts();
-      await clearVoterRecords();
-      await clearLeaderVotes();
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/votes/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok)
+        throw new Error(`HTTP error! status: ${response.status}`);
+
       await fetchData();
       alert("All votes have been reset successfully.");
     } catch (err) {
@@ -213,44 +106,18 @@ const VoteAdmin = () => {
     }
   };
 
-  const resetVoteCounts = async () => {
-    const response = await fetch(
-      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(API_CONFIG.DEFAULT_VOTES),
+  // Calculate school totals from votes
+  const calculateSchoolTotals = () => {
+    const schools = {};
+
+    votes.forEach((vote) => {
+      const school = vote.voter_school;
+      if (school) {
+        schools[school] = (schools[school] || 0) + 1;
       }
-    );
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-  };
+    });
 
-  const clearVoterRecords = async () => {
-    const votersData = await fetchVoterRecords();
-    await Promise.all(
-      votersData.map((voter) =>
-        fetch(
-          `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTERS}/${voter.id}`,
-          {
-            method: "DELETE",
-          }
-        )
-      )
-    );
-  };
-
-  const clearLeaderVotes = async () => {
-    const leaderVotesData = await fetchLeaderVotes();
-    await Promise.all(
-      leaderVotesData.map((vote) =>
-        fetch(
-          `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.LEADER_VOTES}/${vote.id}`,
-          {
-            method: "DELETE",
-          }
-        )
-      )
-    );
+    return schools;
   };
 
   // Auto-refresh data
@@ -263,6 +130,8 @@ const VoteAdmin = () => {
   if (loading) return <div className="text-center py-8">Loading...</div>;
   if (error)
     return <div className="text-red-500 text-center py-8">Error: {error}</div>;
+
+  const schoolTotals = calculateSchoolTotals();
 
   return (
     <div className="bg-gray-100 min-h-screen">
@@ -299,7 +168,7 @@ const VoteAdmin = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500">Total Voters</p>
-                <h3 className="text-2xl font-bold">{voters.length}</h3>
+                <h3 className="text-2xl font-bold">{totalVotes}</h3>
               </div>
               <div className="bg-blue-100 p-3 rounded-full">
                 <FaUsers className="text-blue-600 text-xl" />
@@ -311,7 +180,9 @@ const VoteAdmin = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500">Business & Economics</p>
-                <h3 className="text-2xl font-bold">{businessTotal}</h3>
+                <h3 className="text-2xl font-bold">
+                  {schoolTotals["business"] || 0}
+                </h3>
               </div>
               <div className="bg-green-100 p-3 rounded-full">
                 <FaChartLine className="text-green-600 text-xl" />
@@ -323,7 +194,9 @@ const VoteAdmin = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500">Pure & Applied Science</p>
-                <h3 className="text-2xl font-bold">{scienceTotal}</h3>
+                <h3 className="text-2xl font-bold">
+                  {schoolTotals["science"] || 0}
+                </h3>
               </div>
               <div className="bg-purple-100 p-3 rounded-full">
                 <FaFlask className="text-purple-600 text-xl" />
@@ -335,7 +208,10 @@ const VoteAdmin = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500">Education</p>
-                <h3 className="text-2xl font-bold">{educationTotal}</h3>
+                <h3 className="text-2xl font-bold">
+                  {(schoolTotals["education_arts"] || 0) +
+                    (schoolTotals["education_science"] || 0)}
+                </h3>
               </div>
               <div className="bg-yellow-100 p-3 rounded-full">
                 <FaGraduationCap className="text-yellow-600 text-xl" />
@@ -353,25 +229,11 @@ const VoteAdmin = () => {
                 Business & Economics
               </h3>
             </div>
-            <ul className="divide-y divide-gray-200">
-              {[
-                { name: "Khadijun", votes: votes.Khadijun, color: "blue" },
-                { name: "Iqra", votes: votes.Iqra, color: "blue" },
-                { name: "Abdiaziz", votes: votes.Abdiaziz, color: "blue" },
-              ].map((candidate) => (
-                <li
-                  key={candidate.name}
-                  className="px-4 py-3 flex justify-between items-center"
-                >
-                  <span>{candidate.name}</span>
-                  <span
-                    className={`bg-${candidate.color}-100 text-${candidate.color}-800 py-1 px-3 rounded-full text-sm font-medium`}
-                  >
-                    {candidate.votes}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="p-4">
+              <p className="text-2xl font-bold text-center">
+                {schoolTotals["business"] || 0} votes
+              </p>
+            </div>
           </div>
 
           {/* Pure & Applied Science */}
@@ -381,25 +243,11 @@ const VoteAdmin = () => {
                 Pure & Applied Science
               </h3>
             </div>
-            <ul className="divide-y divide-gray-200">
-              {[
-                { name: "Abdimajid", votes: votes.Abdimajid, color: "purple" },
-                { name: "Atwa", votes: votes.Atwa, color: "purple" },
-                { name: "Zaki", votes: votes.Zaki, color: "purple" },
-              ].map((candidate) => (
-                <li
-                  key={candidate.name}
-                  className="px-4 py-3 flex justify-between items-center"
-                >
-                  <span>{candidate.name}</span>
-                  <span
-                    className={`bg-${candidate.color}-100 text-${candidate.color}-800 py-1 px-3 rounded-full text-sm font-medium`}
-                  >
-                    {candidate.votes}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="p-4">
+              <p className="text-2xl font-bold text-center">
+                {schoolTotals["science"] || 0} votes
+              </p>
+            </div>
           </div>
 
           {/* Education Arts */}
@@ -409,25 +257,11 @@ const VoteAdmin = () => {
                 Education Arts
               </h3>
             </div>
-            <ul className="divide-y divide-gray-200">
-              {[
-                { name: "Leyla", votes: votes.Leyla, color: "yellow" },
-                { name: "Sanem", votes: votes.Sanem, color: "yellow" },
-                { name: "JeyJ", votes: votes.JeyJ, color: "yellow" },
-              ].map((candidate) => (
-                <li
-                  key={candidate.name}
-                  className="px-4 py-3 flex justify-between items-center"
-                >
-                  <span>{candidate.name}</span>
-                  <span
-                    className={`bg-${candidate.color}-100 text-${candidate.color}-800 py-1 px-3 rounded-full text-sm font-medium`}
-                  >
-                    {candidate.votes}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="p-4">
+              <p className="text-2xl font-bold text-center">
+                {schoolTotals["education_arts"] || 0} votes
+              </p>
+            </div>
           </div>
 
           {/* Education Science */}
@@ -437,28 +271,15 @@ const VoteAdmin = () => {
                 Education Science
               </h3>
             </div>
-            <ul className="divide-y divide-gray-200">
-              {[
-                { name: "Ali", votes: votes.Ali, color: "red" },
-                { name: "Yeshi", votes: votes.Yeshi, color: "red" },
-                { name: "zuuu", votes: votes.zuuu, color: "red" },
-              ].map((candidate) => (
-                <li
-                  key={candidate.name}
-                  className="px-4 py-3 flex justify-between items-center"
-                >
-                  <span>{candidate.name}</span>
-                  <span
-                    className={`bg-${candidate.color}-100 text-${candidate.color}-800 py-1 px-3 rounded-full text-sm font-medium`}
-                  >
-                    {candidate.votes}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="p-4">
+              <p className="text-2xl font-bold text-center">
+                {schoolTotals["education_science"] || 0} votes
+              </p>
+            </div>
           </div>
         </div>
-        {/* Leadership Position Votes table remains the same */}
+
+        {/* Leadership Position Votes */}
         <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
           <div className="bg-indigo-800 px-4 py-3">
             <h3 className="text-lg font-semibold text-white">
@@ -481,33 +302,38 @@ const VoteAdmin = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {calculateLeaderVotes().map((positionData) => (
-                  <React.Fragment key={positionData.position}>
-                    {positionData.candidates.map((candidate, idx) => (
-                      <tr key={`${positionData.position}-${idx}`}>
-                        {idx === 0 && (
-                          <td
-                            rowSpan={positionData.candidates.length}
-                            className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r"
-                          >
-                            {positionData.position.replace(/_/g, " ")}
-                          </td>
-                        )}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {candidate.name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {candidate.count}
-                        </td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                ))}
+                {voteResults.results_by_position &&
+                  Object.entries(voteResults.results_by_position).map(
+                    ([position, candidates]) => (
+                      <React.Fragment key={position}>
+                        {candidates.map((candidate, idx) => (
+                          <tr key={`${position}-${idx}`}>
+                            {idx === 0 && (
+                              <td
+                                rowSpan={candidates.length}
+                                className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r"
+                              >
+                                {position.replace(/_/g, " ")}
+                              </td>
+                            )}
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {candidate.candidate_name} (
+                              {candidate.candidate_reg_number})
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {candidate.votes}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    )
+                  )}
               </tbody>
             </table>
           </div>
         </div>
 
+        {/* Voter Records */}
         <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
           <div className="bg-gray-800 px-4 py-3">
             <h3 className="text-lg font-semibold text-white">Voter Records</h3>
@@ -523,10 +349,7 @@ const VoteAdmin = () => {
                     Reg Number
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Voted For
+                    School
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Time
@@ -534,24 +357,68 @@ const VoteAdmin = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {voters.map((voter) => (
-                  <tr key={voter.id || voter.regNumber}>
+                {votes.map((vote) => (
+                  <tr key={vote.id || vote.voter_reg_number}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {voter.name || "N/A"}
+                      {vote.voter_name || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {voter.regNumber || "N/A"}
+                      {vote.voter_reg_number || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {voter.email || "N/A"}
+                      {vote.voter_school || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {voter.votedFor || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {voter.timestamp
-                        ? new Date(voter.timestamp).toLocaleString()
+                      {vote.created_at
+                        ? new Date(vote.created_at).toLocaleString()
                         : "N/A"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Approved Leaders */}
+        <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
+          <div className="bg-green-800 px-4 py-3">
+            <h3 className="text-lg font-semibold text-white">
+              Approved Leaders
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Reg Number
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Position
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    School
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {approvedLeaders.map((leader) => (
+                  <tr key={leader.id || leader.regNumber}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {leader.fullName || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {leader.regNumber || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {leader.position || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {leader.school || "N/A"}
                     </td>
                   </tr>
                 ))}

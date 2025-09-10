@@ -69,10 +69,51 @@ def init_delegate_db():
                 FOREIGN KEY (candidate_id) REFERENCES candidates (id)
             )
         ''')
+        
+        # ENSURE all required columns exist in candidates table
+        cursor = conn.execute("PRAGMA table_info(candidates)")
+        columns = [column['name'] for column in cursor.fetchall()]
+        
+        if 'position' not in columns:
+            conn.execute("ALTER TABLE candidates ADD COLUMN position TEXT DEFAULT 'Delegate'")
+            print("Added position column to candidates table")
+        
+        if 'votes' not in columns:
+            conn.execute("ALTER TABLE candidates ADD COLUMN votes INTEGER DEFAULT 0")
+            print("Added votes column to candidates table")
+            
+        if 'faculty' not in columns:
+            conn.execute("ALTER TABLE candidates ADD COLUMN faculty TEXT")
+            print("Added faculty column to candidates table")
+        
         conn.commit()
 
 # Initialize database
 init_delegate_db()
+
+def map_faculty_name(faculty):
+    """Map various faculty names to consistent frontend format"""
+    if not faculty:
+        return "Unknown"
+    
+    faculty = faculty.strip()
+    mapping = {
+        "business": "School of Business and Economics",
+        "science": "School of Pure and Applied Science",
+        "arts": "School of Education Art", 
+        "education": "School of Education Science",
+        "school of business": "School of Business and Economics",
+        "school of science": "School of Pure and Applied Science",
+        "school of arts": "School of Education Art",
+        "school of education": "School of Education Science",
+    }
+    
+    lower_faculty = faculty.lower()
+    for key, value in mapping.items():
+        if key in lower_faculty:
+            return value
+    
+    return faculty  # Return original if no mapping found
 
 # ------------------ ROUTES ------------------
 
@@ -352,7 +393,7 @@ def debug_all_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Submit a vote
+# Submit a vote - FIXED: Better voter validation
 @delegate_bp.route("/api/vote", methods=["POST"])
 def submit_vote():
     try:
@@ -364,19 +405,28 @@ def submit_vote():
         with get_db_connection() as conn:
             clean_reg_number = str(data["voterRegNumber"]).strip().upper()
 
-            # Check if voter exists and is approved
+            # MODIFIED VOTER CHECK: Allow any student to vote, not just approved delegates
             voter = conn.execute(
-                "SELECT id FROM delegates WHERE registration_number = ? AND is_approved = 1",
+                "SELECT id FROM delegates WHERE registration_number = ?",
                 [clean_reg_number]
             ).fetchone()
 
+            # If voter doesn't exist, create a basic record for voting
             if not voter:
-                return jsonify({"error": "Voter not found or not approved"}), 404
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO delegates (registration_number, full_name, is_approved, is_active) VALUES (?, ?, ?, ?)",
+                    [clean_reg_number, "Voter", 1, 1]  # Auto-approve for voting
+                )
+                voter_id = cursor.lastrowid
+                print(f"Created voter record for: {clean_reg_number}")
+            else:
+                voter_id = voter["id"]
 
             # Check if voter has already voted
             existing_vote = conn.execute(
                 "SELECT id FROM votes WHERE voter_id = ?",
-                [voter["id"]]
+                [voter_id]
             ).fetchone()
 
             if existing_vote:
@@ -385,7 +435,7 @@ def submit_vote():
             # Record the vote
             conn.execute(
                 "INSERT INTO votes (voter_id, candidate_id) VALUES (?, ?)",
-                [voter["id"], int(data["candidateId"])]
+                [voter_id, int(data["candidateId"])]
             )
 
             # Update candidate vote count
@@ -428,43 +478,11 @@ def approve_delegate(delegate_id):
             
             # Create candidate if doesn't exist
             if not existing_candidate:
-                # FIXED: Correct faculty mapping that matches frontend exactly
-                faculty = delegate["faculty"].strip()
-                
-                # Map database faculty values to frontend school names
-                faculty_mapping = {
-                    "Business": "School of Business and Economics",
-                    "Science": "School of Pure and Applied Science", 
-                    "Arts": "School of Education Art",
-                    "Education": "School of Education Science",
-                    # Add variations that might be in your database
-                    "School of Business": "School of Business and Economics",
-                    "School of Applied Science": "School of Pure and Applied Science",
-                    "School of Arts": "School of Education Art",
-                    "School of Education": "School of Education Science",
-                    "Business and Economics": "School of Business and Economics",
-                    "Pure and Applied Science": "School of Pure and Applied Science",
-                    "Education Art": "School of Education Art",
-                    "Education Science": "School of Education Science"
-                }
-                
-                # Use mapped faculty name or keep original if no mapping found
-                mapped_faculty = faculty_mapping.get(faculty, faculty)
+                # FIXED: Use faculty mapping
+                faculty = delegate["faculty"].strip() if delegate["faculty"] else "Unknown"
+                mapped_faculty = map_faculty_name(faculty)
                 
                 print(f"Original faculty: '{faculty}' -> Mapped faculty: '{mapped_faculty}'")
-                
-                # Ensure database has required columns
-                cursor = conn.execute("PRAGMA table_info(candidates)")
-                columns = [column['name'] for column in cursor.fetchall()]
-                
-                # Add missing columns if they don't exist
-                if 'position' not in columns:
-                    conn.execute("ALTER TABLE candidates ADD COLUMN position TEXT DEFAULT 'Delegate'")
-                    print("Added position column to candidates table")
-                
-                if 'votes' not in columns:
-                    conn.execute("ALTER TABLE candidates ADD COLUMN votes INTEGER DEFAULT 0")
-                    print("Added votes column to candidates table")
                 
                 # Insert candidate with correct faculty mapping
                 conn.execute(
@@ -615,3 +633,23 @@ def get_pending_delegates():
         return jsonify(delegates)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# NEW: Test faculty mapping endpoint
+@delegate_bp.route("/api/test-faculty-mapping", methods=["GET"])
+def test_faculty_mapping():
+    """Test endpoint to check faculty mapping"""
+    test_cases = [
+        "business",
+        "Science", 
+        "Arts",
+        "Education",
+        "School of Business",
+        "school of science",
+        "unknown faculty"
+    ]
+    
+    results = {}
+    for faculty in test_cases:
+        results[faculty] = map_faculty_name(faculty)
+    
+    return jsonify(results), 200

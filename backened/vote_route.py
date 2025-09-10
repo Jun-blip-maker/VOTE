@@ -60,6 +60,12 @@ def init_vote_db():
                 # Add the missing column
                 conn.execute('ALTER TABLE votes ADD COLUMN voter_reg_number TEXT NOT NULL DEFAULT ""')
                 print("Added voter_reg_number column to votes table")
+            
+            # Check if voter_school column exists
+            if 'voter_school' not in columns:
+                # Add the missing column
+                conn.execute('ALTER TABLE votes ADD COLUMN voter_school TEXT NOT NULL DEFAULT ""')
+                print("Added voter_school column to votes table")
         
         # Check if vote_results table exists
         cursor.execute("PRAGMA table_info(vote_results)")
@@ -82,10 +88,18 @@ def init_vote_db():
         # Create indexes for better performance (only if they don't exist)
         try:
             conn.execute('CREATE INDEX IF NOT EXISTS idx_votes_reg_number ON votes(voter_reg_number)')
+        except sqlite3.OperationalError as e:
+            print(f"Index creation warning for voter_reg_number: {e}")
+        
+        try:
             conn.execute('CREATE INDEX IF NOT EXISTS idx_votes_school ON votes(voter_school)')
+        except sqlite3.OperationalError as e:
+            print(f"Index creation warning for voter_school: {e}")
+            
+        try:
             conn.execute('CREATE INDEX IF NOT EXISTS idx_vote_results_position ON vote_results(position)')
         except sqlite3.OperationalError as e:
-            print(f"Index creation warning: {e}")
+            print(f"Index creation warning for vote_results position: {e}")
         
         conn.commit()
         print("Vote database initialization completed successfully!")
@@ -102,6 +116,9 @@ def submit_vote():
         return response, 200
 
     data = request.get_json()
+
+    # ADDED: Debug logging
+    print("Received vote data:", data)
 
     # Validate required fields
     required_fields = ["name", "regnumber", "delegate"]
@@ -143,7 +160,7 @@ def submit_vote():
                 )
             )
             
-            # Update vote results
+            # Update vote results - FIXED: Better candidate name lookup
             positions = [
                 ("chairperson", data.get("chairperson", "")),
                 ("vice_chair", data.get("vice_chair", "")),
@@ -156,11 +173,18 @@ def submit_vote():
             
             for position, candidate_reg in positions:
                 if candidate_reg:  # Only update if a candidate was selected
-                    # Get candidate name from chosen_leaders table
+                    # FIXED: Get candidate name from chosen_leaders using reg_number
                     candidate = conn.execute(
                         "SELECT full_name FROM chosen_leaders WHERE reg_number = ?",
                         (candidate_reg,)
                     ).fetchone()
+                    
+                    # If not found in chosen_leaders, try leaders table as fallback
+                    if not candidate:
+                        candidate = conn.execute(
+                            "SELECT full_name FROM leaders WHERE reg_number = ? AND status = 'approved'",
+                            (candidate_reg,)
+                        ).fetchone()
                     
                     candidate_name = candidate["full_name"] if candidate else "Unknown Candidate"
                     
@@ -186,8 +210,10 @@ def submit_vote():
         return response, 201
 
     except sqlite3.IntegrityError as e:
+        print("Integrity error:", str(e))
         return jsonify({"error": "Database integrity error. You may have already voted."}), 400
     except Exception as e:
+        print("Vote submission error:", str(e))
         return jsonify({"error": f"Vote submission failed: {str(e)}"}), 500
 
 @vote_bp.route("/api/votes/results", methods=["GET"])
@@ -334,11 +360,15 @@ def debug_votes():
             votes_count = conn.execute("SELECT COUNT(*) as count FROM votes").fetchone()["count"]
             vote_results_count = conn.execute("SELECT COUNT(*) as count FROM vote_results").fetchone()["count"]
             
+            # Check chosen_leaders table
+            chosen_leaders_count = conn.execute("SELECT COUNT(*) as count FROM chosen_leaders").fetchone()["count"]
+            
             response_data = {
                 "votes_table_columns": [dict(col) for col in votes_columns],
                 "vote_results_table_columns": [dict(col) for col in vote_results_columns],
                 "votes_count": votes_count,
-                "vote_results_count": vote_results_count
+                "vote_results_count": vote_results_count,
+                "chosen_leaders_count": chosen_leaders_count
             }
             
         response = jsonify(response_data)
@@ -347,6 +377,24 @@ def debug_votes():
         
     except Exception as e:
         return jsonify({"error": f"Debug failed: {str(e)}"}), 500
+
+# NEW: Test connection endpoint
+@vote_bp.route("/api/votes/test-connection", methods=["GET"])
+def test_connection():
+    """Test database connection and chosen_leaders table"""
+    try:
+        with get_db_connection() as conn:
+            # Test chosen_leaders table
+            leaders = conn.execute("SELECT COUNT(*) as count FROM chosen_leaders").fetchone()
+            votes = conn.execute("SELECT COUNT(*) as count FROM votes").fetchone()
+            
+            return jsonify({
+                "chosen_leaders_count": leaders["count"],
+                "votes_count": votes["count"],
+                "status": "Database connection successful"
+            }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Export the blueprint
 __all__ = ['vote_bp']
