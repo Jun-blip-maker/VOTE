@@ -70,19 +70,37 @@ const LeaderAdmin = () => {
         },
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.error || `Approval failed: ${response.status}`
-        );
+        // Handle 400 errors specifically
+        if (response.status === 400) {
+          throw new Error(data.error || "Leader approval failed");
+        }
+        throw new Error(data.error || `Server error: ${response.status}`);
       }
 
-      const result = await response.json();
+      // Handle different success cases
+      if (data.already_approved) {
+        // Leader was already approved - just refresh the list
+        console.log("Leader was already approved:", data.message);
+        fetchLeaders(); // Refresh the list
+        alert("Leader was already approved");
+        return;
+      }
+
+      // Normal success case
+      console.log("Leader approved successfully:", data.message);
       fetchLeaders(); // Refresh the list
-      alert(result.message || "Leader approved successfully");
+
+      // Show success message to user
+      alert(data.message || "Leader approved successfully!");
     } catch (error) {
       console.error("Approval error:", error);
-      alert(`Approval failed: ${error.message}`);
+      alert("Failed to approve leader: " + error.message);
+
+      // Even if there's an error, refresh the list to get current status
+      fetchLeaders();
     }
   };
 
@@ -215,12 +233,26 @@ const LeaderAdmin = () => {
           <h1 className="text-3xl font-bold text-gray-800">
             Leaders Management
           </h1>
-          <a
-            href="/voteadmin-page"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-          >
-            See votes
-          </a>
+          <div className="flex space-x-4">
+            <a
+              href="/voteadmin-page"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+            >
+              See L.votes
+            </a>
+            <a
+              href="/voteadmin2"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+            >
+              See D.votes
+            </a>
+            <a
+              href="/Admin-delegates"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+            >
+              Delegate Management
+            </a>
+          </div>
         </div>
 
         <div className="bg-white shadow-md rounded-lg overflow-hidden">

@@ -6,8 +6,11 @@ import jwt
 import datetime
 from contextlib import contextmanager
 import os
+from flask_cors import CORS
 
 delegate_bp = Blueprint('delegate', __name__)
+
+CORS(delegate_bp)
 
 # Configuration
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-strong-secret-key-here')
@@ -394,6 +397,7 @@ def debug_all_data():
         return jsonify({"error": str(e)}), 500
 
 # Submit a vote - FIXED: Better voter validation
+# Submit a vote - FIXED: Better voter validation with default password
 @delegate_bp.route("/api/vote", methods=["POST"])
 def submit_vote():
     try:
@@ -411,12 +415,13 @@ def submit_vote():
                 [clean_reg_number]
             ).fetchone()
 
-            # If voter doesn't exist, create a basic record for voting
+            # If voter doesn't exist, create a basic record for voting with default password
             if not voter:
                 cursor = conn.cursor()
+                default_password = generate_password_hash("default_voter_password")  # Generate a secure default password hash
                 cursor.execute(
-                    "INSERT INTO delegates (registration_number, full_name, is_approved, is_active) VALUES (?, ?, ?, ?)",
-                    [clean_reg_number, "Voter", 1, 1]  # Auto-approve for voting
+                    "INSERT INTO delegates (registration_number, full_name, is_approved, is_active, password) VALUES (?, ?, ?, ?, ?)",
+                    [clean_reg_number, "Voter", 1, 1, default_password]  # Added password
                 )
                 voter_id = cursor.lastrowid
                 print(f"Created voter record for: {clean_reg_number}")
@@ -511,18 +516,21 @@ def approve_delegate(delegate_id):
     
 @delegate_bp.route("/api/voter-records", methods=["GET"])
 def get_voter_records():
-    """Get all students who voted with their voting timestamp"""
+    """Get all students who voted with their voting timestamp and who they voted for"""
     try:
         with get_db_connection() as conn:
-            # Get voter records with voting time
+            # Get voter records - join with delegates table (voters) instead of nonexistent students table
             voter_records = conn.execute('''
                 SELECT 
                     v.voted_at as vote_time,
                     d.registration_number,
-                    d.full_name,
-                    d.faculty
-                FROM votes vt
-                JOIN delegates d ON vt.voter_id = d.id
+                    d.full_name as voter_name,
+                    d.faculty as voter_faculty,
+                    c.full_name as candidate_name,
+                    c.faculty as candidate_faculty
+                FROM votes v
+                JOIN delegates d ON v.voter_id = d.id
+                JOIN candidates c ON v.candidate_id = c.id
                 ORDER BY v.voted_at DESC
             ''').fetchall()
             
@@ -531,15 +539,17 @@ def get_voter_records():
                 records.append({
                     "vote_time": record["vote_time"],
                     "registration_number": record["registration_number"],
-                    "full_name": record["full_name"],
-                    "faculty": record["faculty"]
+                    "voter_name": record["voter_name"],
+                    "voter_faculty": record["voter_faculty"],
+                    "candidate_name": record["candidate_name"],
+                    "candidate_faculty": record["candidate_faculty"]
                 })
             
             return jsonify({"voter_records": records}), 200
             
     except Exception as e:
         print(f"Error getting voter records: {e}")
-        return jsonify({"error": str(e)}), 500    
+        return jsonify({"error": str(e)}), 500
 
 # Get voting results - FIXED: Handle missing columns
 @delegate_bp.route("/api/results", methods=["GET"])

@@ -156,11 +156,31 @@ const AdminDelegates = () => {
           </h1>
           <button
             onClick={handleRefresh}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center"
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md flex items-center"
           >
             <FontAwesomeIcon icon={faSyncAlt} className="mr-2" />
             Refresh
           </button>
+          <div className="flex space-x-4">
+            <a
+              href="/voteadmin-page"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+            >
+              See L.votes
+            </a>
+            <a
+              href="/voteadmin2"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+            >
+              See D.votes
+            </a>
+            <a
+              href="/registration-page"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+            >
+              Leader Management
+            </a>
+          </div>
         </div>
 
         {/* Filters */}

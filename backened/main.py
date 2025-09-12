@@ -7,7 +7,7 @@ from leader_route import leader_bp
 from vote_route import vote_bp
 
 app = Flask(__name__)
-CORS(app) 
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 DATABASE = "garissa_voting.db"
 
 # Register Blueprints

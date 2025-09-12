@@ -537,7 +537,8 @@ def approve_leader(leader_id):
         with get_db_connection() as conn:
             # Begin transaction
             cursor = conn.cursor()
-            # Get leader from pending table
+            
+            # Get leader details
             row = cursor.execute(
                 "SELECT * FROM leaders WHERE id = ?",
                 (leader_id,)
@@ -550,24 +551,45 @@ def approve_leader(leader_id):
                 
             leader = dict(row)
             
-            # Check if leader already exists in chosen_leaders
+            # Check if already approved
+            if leader["is_approved"] == 1:
+                response = jsonify({
+                    "message": "Leader is already approved",
+                    "already_approved": True
+                })
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                return response, 200
+            
+            # Check for duplicates in chosen_leaders
             existing = cursor.execute(
                 "SELECT id FROM chosen_leaders WHERE reg_number = ?",
                 (leader["reg_number"],)
             ).fetchone()
             
             if existing:
-                response = jsonify({"error": "Leader already approved"})
+                # Update approval status without inserting duplicate
+                cursor.execute(
+                    "UPDATE leaders SET status = 'approved', is_approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (leader_id,)
+                )
+                conn.commit()
+                
+                response = jsonify({
+                    "message": "Leader approval status updated (already in chosen_leaders)",
+                    "leader_id": leader_id
+                })
                 response.headers.add("Access-Control-Allow-Origin", "*")
-                return response, 400
+                return response, 200
             
-            # Update status in original leaders table to approved (1)
+            # REMOVED THE map_faculty_name CALL - just use the original school name
+            school_name = leader["school"] if leader["school"] else "School of Education Science"
+            
+            # Update status and insert into chosen_leaders
             cursor.execute(
                 "UPDATE leaders SET status = 'approved', is_approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (leader_id,)
             )
             
-            # Manually insert into chosen_leaders table (in case trigger doesn't work)
             cursor.execute(
                 '''
                 INSERT INTO chosen_leaders (
@@ -580,7 +602,7 @@ def approve_leader(leader_id):
                     leader["id"],
                     leader["full_name"],
                     leader["reg_number"],
-                    leader["school"],
+                    school_name,  # Use original school name directly
                     leader["position"],
                     leader["phone"],
                     leader["email"],
@@ -591,7 +613,7 @@ def approve_leader(leader_id):
             )
             
             conn.commit()
-            print(f"Leader {leader_id} approved and moved to chosen_leaders")
+            print(f"Leader {leader_id} approved with school: {school_name}")
             
         response = jsonify({
             "message": "Leader approved successfully",
@@ -602,14 +624,32 @@ def approve_leader(leader_id):
         return response, 200
         
     except sqlite3.IntegrityError as e:
-        response = jsonify({"error": "Leader already approved or duplicate entry"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
+        print(f"Integrity error: {e}")
+        # Try to just update the approval status
+        try:
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE leaders SET status = 'approved', is_approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (leader_id,)
+                )
+                conn.commit()
+                
+            response = jsonify({
+                "message": "Leader approval status updated",
+                "leader_id": leader_id
+            })
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            return response, 200
+        except Exception as inner_error:
+            response = jsonify({"error": f"Failed to update approval status: {str(inner_error)}"})
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            return response, 400
+            
     except Exception as e:
+        print(f"Approval error: {e}")
         response = jsonify({"error": f"Approval failed: {str(e)}"})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 500
-
 @leader_bp.route("/api/leaders/reject/<int:leader_id>", methods=["POST", "OPTIONS"])
 def reject_leader(leader_id):
     """Reject a leader application"""

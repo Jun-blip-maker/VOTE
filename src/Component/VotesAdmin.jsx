@@ -127,6 +127,30 @@ const VoteAdmin = () => {
               >
                 <FaRedo className="inline mr-1" /> Reset Votes
               </button>
+              <div className="flex space-x-4">
+                <a
+                  href="/voteadmin2"
+                  className=" text-white px-4 py-2 rounded-md"
+                  style={{ backgroundColor: "#003f5a" }}
+                >
+                  See D.votes
+                </a>
+                <a
+                  href="/Admin-delegates"
+                  className=" text-white px-4 py-2 rounded-md"
+                  style={{ backgroundColor: "#003f5a" }}
+                >
+                  Delegate Management
+                </a>
+
+                <a
+                  href="/registration-page"
+                  className=" text-white px-4 py-2 rounded-md"
+                  style={{ backgroundColor: "#003f5a" }}
+                >
+                  Leader Management
+                </a>
+              </div>
             </div>
           </div>
         </div>

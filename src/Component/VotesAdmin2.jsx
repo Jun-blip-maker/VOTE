@@ -5,45 +5,125 @@ import {
   FaFlask,
   FaGraduationCap,
   FaRedo,
+  FaExclamationTriangle,
+  FaWifi,
 } from "react-icons/fa";
 
 const API_CONFIG = {
   BASE_URL: "http://localhost:5000",
   ENDPOINTS: {
     RESULTS: "/api/results",
-    VOTES: "/api/debug/all-data", // Using debug endpoint to get voting data
+    VOTES: "/api/debug/all-data",
     CANDIDATES: "/api/candidates",
+    VOTER_RECORDS: "/api/voter-records",
   },
+};
+
+// Add a function to check if server is available
+const checkServerStatus = async () => {
+  try {
+    const response = await fetch(`${API_CONFIG.BASE_URL}/api/results`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
 };
 
 const VotesAdmin2 = () => {
   const [votesData, setVotesData] = useState({});
   const [candidates, setCandidates] = useState([]);
+  const [voterRecords, setVoterRecords] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [serverOnline, setServerOnline] = useState(true);
 
-  // Fetch data from server
+  // Check server status on component mount
+  useEffect(() => {
+    const checkServer = async () => {
+      const isOnline = await checkServerStatus();
+      setServerOnline(isOnline);
+      if (!isOnline) {
+        setError(
+          "Cannot connect to server. Please make sure the backend is running on localhost:5000"
+        );
+        setLoading(false);
+      }
+    };
+    checkServer();
+  }, []);
+
+  // Fetch data from server with better error handling
   const fetchData = async () => {
-    try {
-      const [resultsData, votesData, candidatesData] = await Promise.all([
-        fetchResults(),
-        fetchVotesData(),
-        fetchCandidates(),
-      ]);
+    if (!serverOnline) return;
 
-      setVotesData(votesData);
-      setCandidates(candidatesData);
+    try {
       setError(null);
+
+      const [resultsData, votesData, candidatesData, voterRecordsData] =
+        await Promise.allSettled([
+          fetchResults(),
+          fetchVotesData(),
+          fetchCandidates(),
+          fetchVoterRecords(),
+        ]);
+
+      // Handle each response with debug logging
+      if (resultsData.status === "fulfilled") {
+        setVotesData((prev) => ({ ...prev, ...resultsData.value }));
+        console.log("Results data:", resultsData.value);
+      } else {
+        console.error("Results fetch failed:", resultsData.reason);
+      }
+
+      if (votesData.status === "fulfilled") {
+        setVotesData((prev) => ({ ...prev, ...votesData.value }));
+        console.log("Votes data:", votesData.value);
+      } else {
+        console.error("Votes data fetch failed:", votesData.reason);
+      }
+
+      if (candidatesData.status === "fulfilled") {
+        setCandidates(candidatesData.value);
+        console.log("Candidates data:", candidatesData.value);
+      } else {
+        console.error("Candidates fetch failed:", candidatesData.reason);
+      }
+
+      if (voterRecordsData.status === "fulfilled") {
+        setVoterRecords(voterRecordsData.value.voter_records || []);
+        console.log("Voter records data:", voterRecordsData.value);
+      } else {
+        console.error("Voter records fetch failed:", voterRecordsData.reason);
+      }
     } catch (err) {
-      setError(err.message);
       console.error("Failed to fetch data:", err);
+      if (err.message.includes("Failed to fetch")) {
+        setError(
+          "Cannot connect to server. Please make sure the backend is running."
+        );
+        setServerOnline(false);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchWithTimeout = (url, options = {}, timeout = 10000) => {
+    return Promise.race([
+      fetch(url, options),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout")), timeout)
+      ),
+    ]);
+  };
+
   const fetchResults = async () => {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.RESULTS}`
     );
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -51,22 +131,30 @@ const VotesAdmin2 = () => {
   };
 
   const fetchVotesData = async () => {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`
-    );
+    ); // Fixed missing closing parenthesis
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return await response.json();
   };
 
   const fetchCandidates = async () => {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CANDIDATES}`
     );
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return await response.json();
   };
 
-  // Calculate school totals from candidates
+  const fetchVoterRecords = async () => {
+    const response = await fetchWithTimeout(
+      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTER_RECORDS}`
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  };
+
+  // Calculate school totals based on votes for candidates from each school
   const calculateSchoolTotals = () => {
     const schools = {
       "School of Business and Economics": 0,
@@ -76,7 +164,17 @@ const VotesAdmin2 = () => {
     };
 
     candidates.forEach((candidate) => {
-      const school = candidate.faculty;
+      let school = candidate.faculty;
+      // Map faculty names to match UI format
+      if (school === "Business And Economics")
+        school = "School of Business and Economics";
+      if (school === "Education Sciences")
+        school = "School of Education Science";
+      if (school === "School of Education Art")
+        school = "School of Education Art"; // Already matches
+      if (school === "School of Pure and Applied Science")
+        school = "School of Pure and Applied Science"; // Already matches
+
       if (school && schools.hasOwnProperty(school)) {
         schools[school] += candidate.votes || 0;
       }
@@ -85,31 +183,81 @@ const VotesAdmin2 = () => {
     return schools;
   };
 
-  // Get voter records from votes data
-  const getVoterRecords = () => {
-    if (!votesData.delegates) return [];
-
-    return votesData.delegates.filter(
-      (delegate) =>
-        delegate.registration_number && delegate.full_name !== "Voter"
-    );
-  };
-
-  // Auto-refresh data
+  // Auto-refresh data only if server is online
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    if (serverOnline) {
+      fetchData();
+      const interval = setInterval(fetchData, 10000); // Refresh every 10 seconds
+      return () => clearInterval(interval);
+    }
+  }, [serverOnline]);
 
-  if (loading) return <div className="text-center py-8">Loading...</div>;
-  if (error)
-    return <div className="text-red-500 text-center py-8">Error: {error}</div>;
+  // Server offline message component
+  if (!serverOnline) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center bg-white p-8 rounded-lg shadow-md">
+          <FaWifi className="text-4xl text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Server Offline
+          </h2>
+          <p className="text-gray-600 mb-4">
+            Cannot connect to the voting server. Please make sure:
+          </p>
+          <ul className="text-left text-gray-600 mb-6 space-y-2">
+            <li>• The Flask backend is running on port 5000</li>
+            <li>• You have an active internet connection</li>
+            <li>• There are no firewall restrictions</li>
+          </ul>
+          <button
+            onClick={async () => {
+              const isOnline = await checkServerStatus();
+              setServerOnline(isOnline);
+              if (isOnline) fetchData();
+            }}
+            className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+          >
+            <FaRedo className="inline mr-2" /> Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading voting data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center bg-white p-8 rounded-lg shadow-md">
+          <FaExclamationTriangle className="text-4xl text-yellow-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchData}
+            className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+          >
+            <FaRedo className="inline mr-2" /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const schoolTotals = calculateSchoolTotals();
-  const voterRecords = getVoterRecords();
-  const totalVotes = votesData.total_votes || 0;
-
+  const totalVotes = Object.values(schoolTotals).reduce(
+    (sum, votes) => sum + votes,
+    0
+  );
   return (
     <div className="bg-gray-100 min-h-screen">
       <nav
@@ -125,9 +273,38 @@ const VotesAdmin2 = () => {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm">
-                Total Votes: {totalVotes} | Delegates:{" "}
-                {votesData.delegates_total || 0}
+                Total Votes: {totalVotes} | Voters: {voterRecords.length}
               </span>
+              <button
+                onClick={fetchData}
+                className="bg-white text-green-800 px-3 py-1 rounded text-sm font-medium hover:bg-green-100"
+              >
+                <FaRedo className="inline mr-1" /> Refresh
+              </button>
+              <div className="flex space-x-4">
+                <a
+                  href="/voteadmin-page"
+                  className=" text-white px-4 py-2 rounded-md"
+                  style={{ backgroundColor: "#003f5a" }}
+                >
+                  See L.votes
+                </a>
+                <a
+                  href="/Admin-delegates"
+                  className=" text-white px-4 py-2 rounded-md"
+                  style={{ backgroundColor: "#003f5a" }}
+                >
+                  Delegate Management
+                </a>
+
+                <a
+                  href="/registration-page"
+                  className=" text-white px-4 py-2 rounded-md"
+                  style={{ backgroundColor: "#003f5a" }}
+                >
+                  Leader Management
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -309,7 +486,7 @@ const VotesAdmin2 = () => {
           <div className="bg-gray-800 px-4 py-3">
             <h3 className="text-lg font-semibold text-white">Voter Records</h3>
             <p className="text-gray-300 text-sm">
-              Total Registered Delegates: {voterRecords.length}
+              Total Voters: {voterRecords.length}
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -326,13 +503,13 @@ const VotesAdmin2 = () => {
                     School/Faculty
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                    Vote Time
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {voterRecords.map((voter) => (
-                  <tr key={voter.id}>
+                {voterRecords.map((voter, index) => (
+                  <tr key={index}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {voter.full_name}
                     </td>
@@ -343,7 +520,7 @@ const VotesAdmin2 = () => {
                       {voter.faculty || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {voter.is_approved ? "Approved" : "Pending"}
+                      {new Date(voter.vote_time).toLocaleString()}
                     </td>
                   </tr>
                 ))}
