@@ -22,22 +22,21 @@ function Leaders() {
         }
 
         const data = await response.json();
+        console.log("API Response:", data); // Debug log
 
         // Group candidates by position
         const grouped = data.candidates.reduce((acc, candidate) => {
-          if (!acc[candidate.position]) {
-            acc[candidate.position] = [];
+          const normalizedPosition = candidate.position.trim();
+
+          if (!acc[normalizedPosition]) {
+            acc[normalizedPosition] = [];
           }
-          acc[candidate.position].push(candidate);
+          acc[normalizedPosition].push(candidate);
           return acc;
         }, {});
 
         setCandidatesByPosition(grouped);
-
-        // Debug: Log available positions to console
-        console.log("Available positions in database:", Object.keys(grouped));
-        console.log("Full candidate data:", data.candidates);
-
+        console.log("Grouped candidates:", grouped); // Debug log
         setError(null);
       } catch (error) {
         console.error("Error fetching candidates:", error);
@@ -49,6 +48,29 @@ function Leaders() {
 
     fetchCandidates();
   }, []);
+
+  // Get photo URL for a candidate - optimized for backend compatibility
+  const getPhotoUrl = (candidate) => {
+    // Priority 1: Use photoUrl from backend if provided and valid
+    if (
+      candidate.photoUrl &&
+      candidate.photoUrl !== "/api/leaders/photo/null"
+    ) {
+      return `http://localhost:5000${candidate.photoUrl}`;
+    }
+
+    // Priority 2: Try to construct URL using original_leader_id if available
+    if (candidate.original_leader_id) {
+      return `http://localhost:5000/api/leaders/photo/${candidate.original_leader_id}`;
+    }
+
+    // Priority 3: Fallback to using the current ID (might not work but worth trying)
+    if (candidate.id) {
+      return `http://localhost:5000/api/leaders/photo/${candidate.id}`;
+    }
+
+    return null;
+  };
 
   // Get all available positions from the data and sort them
   const getOrderedPositions = () => {
@@ -183,8 +205,6 @@ function Leaders() {
           </div>
           <div className="flex items-center mr-8">
             <RegDropDown />
-            <VoteDropdown />
-
             <Link
               to="/"
               className="bg-green-700 hover:bg-green-800 text-white text-sm sm:text-base py-2 px-2 rounded mr-2 transition-colors duration-300"
@@ -225,90 +245,136 @@ function Leaders() {
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {candidatesByPosition[position].map((candidate) => (
-                    <div
-                      key={candidate.id}
-                      className="relative bg-white rounded-lg shadow-md overflow-hidden group"
-                      style={{ height: "300px" }} // Fixed height for consistency
-                    >
-                      {/* Main content (always visible) */}
-                      <div className="p-6 h-full flex flex-col items-center justify-center">
-                        {/* Candidate Photo */}
-                        <div className="flex justify-center mb-4">
-                          {candidate.photoUrl ? (
-                            <img
-                              src={`http://localhost:5000/uploads/${candidate.photoUrl}`}
-                              alt={candidate.fullName}
-                              className="w-32 h-32 rounded-full object-cover border-4"
-                              style={{ borderColor: "#008800" }}
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                                e.target.nextSibling.style.display = "flex";
-                              }}
-                            />
-                          ) : (
+                  {candidatesByPosition[position].map((candidate) => {
+                    const photoUrl = getPhotoUrl(candidate);
+                    console.log(`Candidate ${candidate.fullName}:`, {
+                      photoUrl,
+                      candidateId: candidate.id,
+                      originalLeaderId: candidate.original_leader_id,
+                      backendPhotoUrl: candidate.photoUrl,
+                    }); // Detailed debug info
+
+                    return (
+                      <div
+                        key={candidate.id}
+                        className="relative bg-white rounded-lg shadow-md overflow-hidden group"
+                        style={{ height: "300px" }}
+                      >
+                        {/* Main content (always visible) */}
+                        <div className="p-6 h-full flex flex-col items-center justify-center">
+                          {/* Candidate Photo */}
+                          <div className="flex justify-center mb-4 relative">
+                            {photoUrl ? (
+                              <>
+                                <img
+                                  src={photoUrl}
+                                  alt={candidate.fullName}
+                                  className="w-32 h-32 rounded-full object-cover border-4 photo-img"
+                                  style={{ borderColor: "#008800" }}
+                                  onError={(e) => {
+                                    console.log(
+                                      `Image failed to load: ${photoUrl}`
+                                    );
+                                    e.target.style.display = "none";
+                                    const fallback =
+                                      e.target.parentElement.querySelector(
+                                        ".photo-fallback"
+                                      );
+                                    if (fallback) {
+                                      fallback.style.display = "flex";
+                                      fallback.classList.remove("hidden");
+                                    }
+                                  }}
+                                  onLoad={(e) => {
+                                    console.log(
+                                      `Image loaded successfully: ${photoUrl}`
+                                    );
+                                    const fallback =
+                                      e.target.parentElement.querySelector(
+                                        ".photo-fallback"
+                                      );
+                                    if (fallback) {
+                                      fallback.style.display = "none";
+                                    }
+                                  }}
+                                />
+                                {/* Loading indicator */}
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                                </div>
+                              </>
+                            ) : null}
+
+                            {/* Fallback avatar - shows when no photo or photo fails to load */}
                             <div
-                              className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center border-4"
+                              className={`photo-fallback w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center border-4 ${
+                                photoUrl ? "hidden" : "flex"
+                              }`}
                               style={{ borderColor: "#008800" }}
                             >
                               <span className="text-gray-500 text-4xl">
                                 {candidate.fullName.charAt(0).toUpperCase()}
                               </span>
                             </div>
-                          )}
-                        </div>
+                          </div>
 
-                        {/* Candidate Name */}
-                        <h3 className="text-xl font-bold text-center">
-                          {candidate.fullName}
-                        </h3>
+                          {/* Candidate Name */}
+                          <h3 className="text-xl font-bold text-center">
+                            {candidate.fullName}
+                          </h3>
 
-                        {/* Position */}
-                        <p className="text-sm text-gray-600 mt-1">
-                          {candidate.regNumber}
-                        </p>
-                      </div>
-
-                      {/* Overlay with additional info (shown on hover) */}
-                      <div className="absolute inset-0 bg-white bg-opacity-95 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-6 text-center">
-                        <h3 className="text-xl font-bold mb-2">
-                          {candidate.fullName}
-                        </h3>
-                        <div className="space-y-1">
-                          <p className="text-gray-600">
-                            <span className="font-semibold">Position:</span>{" "}
-                            {candidate.position}
-                          </p>
-                          <p className="text-gray-600">
-                            <span className="font-semibold">Reg No:</span>{" "}
+                          {/* Registration Number */}
+                          <p className="text-sm text-gray-600 mt-1">
                             {candidate.regNumber}
                           </p>
-                          <p className="text-gray-600">
-                            <span className="font-semibold">School:</span>{" "}
+
+                          {/* School */}
+                          <p className="text-sm text-gray-500 mt-1">
                             {candidate.school}
                           </p>
-                          {candidate.yearOfStudy && (
+                        </div>
+
+                        {/* Overlay with additional info (shown on hover) */}
+                        <div className="absolute inset-0 bg-white bg-opacity-95 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-6 text-center">
+                          <h3 className="text-xl font-bold mb-2">
+                            {candidate.fullName}
+                          </h3>
+                          <div className="space-y-1">
                             <p className="text-gray-600">
-                              <span className="font-semibold">Year:</span>{" "}
-                              {candidate.yearOfStudy}
+                              <span className="font-semibold">Position:</span>{" "}
+                              {candidate.position}
                             </p>
-                          )}
-                          {candidate.phone && (
                             <p className="text-gray-600">
-                              <span className="font-semibold">Phone:</span>{" "}
-                              {candidate.phone}
+                              <span className="font-semibold">Reg No:</span>{" "}
+                              {candidate.regNumber}
                             </p>
-                          )}
-                          {candidate.email && (
                             <p className="text-gray-600">
-                              <span className="font-semibold">Email:</span>{" "}
-                              {candidate.email}
+                              <span className="font-semibold">School:</span>{" "}
+                              {candidate.school}
                             </p>
-                          )}
+                            {candidate.yearOfStudy && (
+                              <p className="text-gray-600">
+                                <span className="font-semibold">Year:</span>{" "}
+                                {candidate.yearOfStudy}
+                              </p>
+                            )}
+                            {candidate.phone && (
+                              <p className="text-gray-600">
+                                <span className="font-semibold">Phone:</span>{" "}
+                                {candidate.phone}
+                              </p>
+                            )}
+                            {candidate.email && (
+                              <p className="text-gray-600">
+                                <span className="font-semibold">Email:</span>{" "}
+                                {candidate.email}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))

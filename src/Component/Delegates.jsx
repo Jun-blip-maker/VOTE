@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Delegates = () => {
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -10,6 +11,7 @@ const Delegates = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   // Define the schools exactly as they should appear
   const schools = [
@@ -143,12 +145,14 @@ const Delegates = () => {
       setVoterData({ fullName: "", registrationNumber: "" });
       setSelectedCandidate(null);
 
-      setTimeout(() => setSuccess(false), 3000);
+      // Navigate to /CVote after 2 seconds
+      setTimeout(() => {
+        navigate("/CV-page");
+      }, 2000);
     } catch (err) {
       setError(err.message || "Failed to submit vote");
     }
   };
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">

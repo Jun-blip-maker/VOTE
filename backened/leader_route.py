@@ -7,6 +7,10 @@ import datetime
 import os
 from contextlib import contextmanager
 import re
+from werkzeug.utils import secure_filename
+from flask import send_file
+import io
+
 
 # Create the Blueprint instance
 leader_bp = Blueprint('leader', __name__)
@@ -55,12 +59,57 @@ def validate_email(email):
         return False, "Invalid email format"
     return True, email
 
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+
+def allowed_file(filename):
+    """Check if the file has an allowed extension."""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def normalize_position_name(position):
+    """Normalize position names to handle variations consistently"""
+    if not position:
+        return position
+    
+    position_lower = position.lower().strip()
+    
+    # Handle Sports and Entertainment Director variations
+    if 'sport' in position_lower and 'entertainment' in position_lower and 'director' in position_lower:
+        return 'Sports and Entertainment Director'
+    
+    # Handle other potential variations
+    variations = {
+        'chairperson': 'ChairPerson',
+        'vice chairperson': 'Vice ChairPerson', 
+        'vice-chairperson': 'Vice ChairPerson',
+        'secretary general': 'Secretary General',
+        'finance secretary': 'Finance Secretary',
+        'academic director': 'Academic Director',
+        'welfare director': 'Welfare Director'
+    }
+    
+    for variation, standard in variations.items():
+        if variation in position_lower:
+            return standard
+    
+    # Return original if no variations matched
+    return position
+
 def init_db():
     with get_db_connection() as conn:
         # Check if leaders table exists and get its structure
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(leaders)")
         columns = [row[1] for row in cursor.fetchall()]
+        
+        # Add missing photo columns if they don't exist
+        if 'photo' not in columns:
+            conn.execute('ALTER TABLE leaders ADD COLUMN photo BLOB')
+            print("Added 'photo' column to leaders table")
+        
+        if 'photo_filename' not in columns:
+            conn.execute('ALTER TABLE leaders ADD COLUMN photo_filename TEXT')
+            print("Added 'photo_filename' column to leaders table")
         
         if not columns:
             # Create new leaders table with status column
@@ -114,24 +163,19 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chosen_leaders_reg_number ON chosen_leaders(reg_number)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chosen_leaders_email ON chosen_leaders(email)')
         
-        # Create trigger to automatically move approved leaders to chosen_leaders
-        conn.execute('''
-            CREATE TRIGGER IF NOT EXISTS after_leader_approval
-            AFTER UPDATE OF is_approved ON leaders
-            FOR EACH ROW
-            WHEN NEW.is_approved = 1 AND OLD.is_approved != 1
-            BEGIN
-                INSERT INTO chosen_leaders (
-                    original_leader_id, full_name, reg_number, school, 
-                    position, phone, email, year_of_study, photo_url, password
-                )
-                VALUES (
-                    NEW.id, NEW.full_name, NEW.reg_number, NEW.school,
-                    NEW.position, NEW.phone, NEW.email, NEW.year_of_study, 
-                    NEW.photo_url, NEW.password
-                );
-            END;
-        ''')
+        # Clean up existing position name variations
+        try:
+            conn.execute(
+                "UPDATE leaders SET position = ? WHERE position LIKE ?",
+                ('Sports and Entertainment Director', '%Sport%Entertainment%Director%')
+            )
+            conn.execute(
+                "UPDATE chosen_leaders SET position = ? WHERE position LIKE ?",
+                ('Sports and Entertainment Director', '%Sport%Entertainment%Director%')
+            )
+            print("Cleaned up position name variations in database")
+        except Exception as e:
+            print(f"Note: Could not clean up position names: {e}")
         
         conn.commit()
         print("Database initialization completed successfully!")
@@ -178,23 +222,26 @@ def register_leader():
         if not password:
             return jsonify({"error": "Password cannot be generated from phone number"}), 400
 
+        # Normalize position name to handle variations
+        normalized_position = normalize_position_name(data["position"])
+        print(f"Original position: {data['position']}, Normalized: {normalized_position}")
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 '''
                 INSERT INTO leaders (full_name, reg_number, school, position, phone, email, 
-                                   year_of_study, photo_url, password, status, is_approved)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
+                                   year_of_study, password, status, is_approved)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)
                 ''',
                 (
                     str(data["fullName"]).strip(),
                     str(data["regNumber"]).strip().upper(),
                     str(data.get("school", "")).strip(),
-                    str(data["position"]).strip(),
+                    normalized_position,  # Use normalized position
                     phone,
                     email,
                     str(data.get("yearOfStudy", "")).strip(),
-                    None,  # photo_url placeholder
                     generate_password_hash(password)
                 ),
             )
@@ -218,6 +265,98 @@ def register_leader():
         return jsonify({"error": "Database integrity error"}), 400
     except Exception as e:
         return jsonify({"error": f"Registration failed: {str(e)}"}), 500
+
+
+@leader_bp.route('/api/leaders/upload-photo', methods=['POST', 'OPTIONS'])
+def upload_leader_photo():
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "ok"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        return response, 200
+
+    try:
+        leader_id = request.form.get('leader_id')
+        photo = request.files.get('photo')
+        
+        print(f"Photo upload request - Leader ID: {leader_id}, File: {photo}")
+        
+        if not leader_id:
+            return jsonify({'error': 'Leader ID is required'}), 400
+        if not photo:
+            return jsonify({'error': 'Photo file is required'}), 400
+        
+        # Validate file
+        if not allowed_file(photo.filename):
+            return jsonify({'error': 'Invalid file type. Only PNG, JPG, JPEG allowed'}), 400
+        
+        # Check file size (5MB max)
+        photo.seek(0, 2)  # Seek to end to get file size
+        file_size = photo.tell()
+        photo.seek(0)  # Reset seek position
+        if file_size > 5 * 1024 * 1024:
+            return jsonify({'error': 'File size too large. Maximum 5MB allowed'}), 400
+        
+        # Read photo data
+        photo_filename = secure_filename(photo.filename)
+        photo_data = photo.read()
+        
+        print(f"Updating photo for leader {leader_id}, filename: {photo_filename}, size: {len(photo_data)} bytes")
+        
+        # Update leader record with photo
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if leader exists
+            cursor.execute('SELECT id FROM leaders WHERE id = ?', (leader_id,))
+            if not cursor.fetchone():
+                return jsonify({'error': 'Leader not found'}), 404
+            
+            # Update photo AND set photo_url for future approval
+            photo_url = f"/api/leaders/photo/{leader_id}"
+            cursor.execute('''
+                UPDATE leaders 
+                SET photo = ?, photo_filename = ?, photo_url = ?
+                WHERE id = ?
+            ''', (photo_data, photo_filename, photo_url, leader_id))
+            
+            conn.commit()
+        
+        print(f"Photo uploaded successfully for leader {leader_id}")
+        return jsonify({'message': 'Photo uploaded successfully'}), 200
+        
+    except Exception as e:
+        print(f"Photo upload error: {str(e)}")
+        return jsonify({'error': f'Photo upload failed: {str(e)}'}), 500
+
+
+@leader_bp.route('/api/leaders/photo/<int:leader_id>')
+def get_leader_photo(leader_id):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Allow both approved and pending leaders to have photos
+            cursor.execute('''
+                SELECT photo FROM leaders WHERE id = ?
+            ''', (leader_id,))
+            
+            result = cursor.fetchone()
+            
+            if not result or not result[0]:
+                return jsonify({'error': 'Photo not found'}), 404
+            
+            photo_data = result[0]
+            
+            return send_file(
+                io.BytesIO(photo_data),
+                mimetype='image/jpeg',
+                as_attachment=False
+            )
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @leader_bp.route("/api/leaders/login", methods=["POST", "OPTIONS"])
 def login():
@@ -581,15 +720,19 @@ def approve_leader(leader_id):
                 response.headers.add("Access-Control-Allow-Origin", "*")
                 return response, 200
             
-            # REMOVED THE map_faculty_name CALL - just use the original school name
+            # Use the original school name
             school_name = leader["school"] if leader["school"] else "School of Education Science"
             
-            # Update status and insert into chosen_leaders
+            # Generate proper photo_url - use the one from leaders table or create default
+            photo_url = leader["photo_url"] if leader["photo_url"] else f"/api/leaders/photo/{leader_id}"
+            
+            # Update the original leader record with approval status and ensure photo_url is set
             cursor.execute(
-                "UPDATE leaders SET status = 'approved', is_approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (leader_id,)
+                "UPDATE leaders SET status = 'approved', is_approved = 1, photo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (photo_url, leader_id)
             )
             
+            # Insert into chosen_leaders with correct photo_url
             cursor.execute(
                 '''
                 INSERT INTO chosen_leaders (
@@ -602,18 +745,18 @@ def approve_leader(leader_id):
                     leader["id"],
                     leader["full_name"],
                     leader["reg_number"],
-                    school_name,  # Use original school name directly
-                    leader["position"],
+                    school_name,
+                    leader["position"],  # This will be the normalized position
                     leader["phone"],
                     leader["email"],
                     leader["year_of_study"],
-                    leader["photo_url"],
+                    photo_url,
                     leader["password"]
                 )
             )
             
             conn.commit()
-            print(f"Leader {leader_id} approved with school: {school_name}")
+            print(f"Leader {leader_id} approved with school: {school_name} and photo_url: {photo_url}")
             
         response = jsonify({
             "message": "Leader approved successfully",
@@ -650,6 +793,7 @@ def approve_leader(leader_id):
         response = jsonify({"error": f"Approval failed: {str(e)}"})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 500
+
 @leader_bp.route("/api/leaders/reject/<int:leader_id>", methods=["POST", "OPTIONS"])
 def reject_leader(leader_id):
     """Reject a leader application"""
@@ -855,6 +999,7 @@ def get_approved_leaders():
             leader = dict(row)
             leaders.append({
                 "id": leader["id"],
+                "original_leader_id": leader["original_leader_id"],  # ADDED: For photo access
                 "fullName": leader["full_name"],
                 "regNumber": leader["reg_number"],
                 "school": leader["school"],
@@ -862,7 +1007,7 @@ def get_approved_leaders():
                 "phone": leader["phone"],
                 "email": leader["email"],
                 "yearOfStudy": leader["year_of_study"],
-                "photoUrl": leader["photo_url"]
+                "photoUrl": f"/api/leaders/photo/{leader['original_leader_id']}"  # FIXED: Use original_leader_id for photos
             })
         
         response = jsonify({"candidates": leaders})
@@ -886,8 +1031,8 @@ def debug_leaders():
 
     try:
         with get_db_connection() as conn:
-            pending_leaders = conn.execute("SELECT id, reg_number, full_name, status, is_approved FROM leaders").fetchall()
-            chosen_leaders = conn.execute("SELECT id, original_leader_id, reg_number, full_name, approved_at FROM chosen_leaders").fetchall()
+            pending_leaders = conn.execute("SELECT id, reg_number, full_name, position, status, is_approved, photo_url FROM leaders").fetchall()
+            chosen_leaders = conn.execute("SELECT id, original_leader_id, reg_number, full_name, position, photo_url, approved_at FROM chosen_leaders").fetchall()
             
             response = jsonify({
                 "database": os.path.abspath("garissa_voting.db"),

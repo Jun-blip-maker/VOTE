@@ -11,29 +11,107 @@ function LeaderReg() {
     phone: "",
     email: "",
     yearOfStudy: "",
-    // Removed course field
     photo: null,
-    photoUrl: "",
+    photoPreview: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
-    const { id, value, files } = e.target;
+    const { id, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  };
 
-    if (id === "photo" && files && files[0]) {
-      const photoUrl = URL.createObjectURL(files[0]);
-      setFormData((prev) => ({
-        ...prev,
-        photo: files[0],
-        photoUrl: photoUrl,
-      }));
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+
+    if (file) {
+      // Validate file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        Swal.fire({
+          icon: "error",
+          title: "File Too Large",
+          text: "Please select an image smaller than 5MB.",
+        });
+        return;
+      }
+
+      // Validate file type
+      const validTypes = ["image/jpeg", "image/jpg", "image/png"];
+      if (!validTypes.includes(file.type)) {
+        Swal.fire({
+          icon: "error",
+          title: "Invalid File Type",
+          text: "Please select a valid image (JPG, JPEG, PNG).",
+        });
+        return;
+      }
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setFormData((prev) => ({
+          ...prev,
+          photo: file,
+          photoPreview: e.target.result,
+        }));
+      };
+      reader.readAsDataURL(file);
     } else {
       setFormData((prev) => ({
         ...prev,
-        [id]: value,
+        photo: null,
+        photoPreview: "",
       }));
+    }
+  };
+
+  // Separate function to upload photo after registration
+  const uploadPhoto = async (leaderId, photoFile) => {
+    try {
+      const photoData = new FormData();
+      photoData.append("photo", photoFile);
+      photoData.append("leader_id", leaderId.toString()); // Ensure it's string
+
+      console.log("Uploading photo details:", {
+        leaderId: leaderId,
+        fileName: photoFile.name,
+        fileSize: photoFile.size,
+        fileType: photoFile.type,
+      });
+
+      const response = await fetch(
+        "http://localhost:5000/api/leaders/upload-photo",
+        {
+          method: "POST",
+          body: photoData,
+        }
+      );
+
+      console.log("Upload response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Photo upload failed:", errorText);
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText };
+        }
+        return false;
+      }
+
+      const result = await response.json();
+      console.log("Photo upload success:", result);
+      return true;
+    } catch (error) {
+      console.error("Photo upload network error:", error);
+      return false;
     }
   };
 
@@ -47,12 +125,12 @@ function LeaderReg() {
         !formData.fullName ||
         !formData.regNumber ||
         !formData.phone ||
-        !formData.position // Changed from photo to position
+        !formData.position
       ) {
         throw new Error("Required fields are missing!");
       }
 
-      // Prepare JSON data (not FormData)
+      // STEP 1: Register leader using JSON (matches your backend expectation)
       const submissionData = {
         fullName: formData.fullName.trim(),
         regNumber: formData.regNumber.trim(),
@@ -61,26 +139,41 @@ function LeaderReg() {
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         yearOfStudy: formData.yearOfStudy.trim(),
-        // Removed course field
-        // Photo upload would need separate handling
       };
 
-      // Send to server using the correct leader endpoint
+      console.log("Submitting registration data:", submissionData);
+
       const response = await fetch(
         "http://localhost:5000/api/leaders/register",
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json", // Added JSON header
+            "Content-Type": "application/json", // Required for your backend
           },
           body: JSON.stringify(submissionData),
         }
       );
 
       const data = await response.json();
+      console.log("Registration response:", data);
 
       if (!response.ok) {
         throw new Error(data.error || "Registration failed");
+      }
+
+      // STEP 2: Upload photo separately if exists
+      let photoUploadSuccess = false;
+      let photoUploadMessage = "";
+
+      if (formData.photo && data.leader_id) {
+        console.log("Attempting photo upload for leader:", data.leader_id);
+        photoUploadSuccess = await uploadPhoto(data.leader_id, formData.photo);
+        photoUploadMessage = photoUploadSuccess
+          ? "✓ Photo uploaded successfully"
+          : "⚠ Photo upload failed, but registration was successful";
+      } else if (formData.photo && !data.leader_id) {
+        console.warn("No leader_id received for photo upload");
+        photoUploadMessage = "⚠ Could not upload photo - missing leader ID";
       }
 
       await Swal.fire({
@@ -89,8 +182,19 @@ function LeaderReg() {
         html: `
           <div>
             <p>Your leader account has been created and is pending approval.</p>
-            <p class="mt-2"><strong>Temporary Password:</strong> ${data.temp_password}</p>
+            <p class="mt-2"><strong>Temporary Password:</strong> ${
+              data.temp_password
+            }</p>
             <p class="text-sm text-gray-600 mt-2">Use this password to login after your account is approved.</p>
+            ${
+              formData.photo
+                ? `<p class="mt-2 ${
+                    photoUploadSuccess ? "text-green-600" : "text-yellow-600"
+                  }">
+                ${photoUploadMessage}
+              </p>`
+                : ""
+            }
           </div>
         `,
         showConfirmButton: true,
@@ -109,9 +213,14 @@ function LeaderReg() {
         email: "",
         yearOfStudy: "",
         photo: null,
-        photoUrl: "",
+        photoPreview: "",
       });
+
+      // Reset file input
+      const fileInput = document.getElementById("photo");
+      if (fileInput) fileInput.value = "";
     } catch (error) {
+      console.error("Registration error:", error);
       Swal.fire({
         icon: "error",
         title: "Registration Failed",
@@ -252,35 +361,39 @@ function LeaderReg() {
                   <option>Secretary General</option>
                   <option>Finance Secretary</option>
                   <option>Academic Director</option>
-                  <option>Sport/Entertainment Director</option>
-                  <option>WellFair Director</option>
+                  <option>Sports and Entertainment Director</option>
+                  <option>Welfare Director</option>
                 </select>
               </div>
 
-              {/* Photo Upload (Optional) */}
+              {/* Photo Upload Section */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Photo (Optional - Not implemented yet)
+                  Photo (Optional)
                 </label>
                 <input
                   type="file"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   id="photo"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   accept=".jpg,.jpeg,.png"
-                  onChange={handleChange}
-                  disabled={true} // Disabled until implemented
+                  onChange={handlePhotoChange}
                 />
-                {formData.photoUrl && (
+
+                {formData.photoPreview && (
                   <div className="mt-2">
                     <img
-                      src={formData.photoUrl}
+                      src={formData.photoPreview}
                       alt="Preview"
                       className="max-w-[100px] rounded-md"
                     />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Selected: {formData.photo?.name}
+                    </p>
                   </div>
                 )}
+
                 <p className="text-sm text-gray-500 mt-1">
-                  Photo upload feature is coming soon.
+                  Supported formats: JPG, JPEG, PNG (Max 5MB)
                 </p>
               </div>
 
@@ -311,7 +424,7 @@ function LeaderReg() {
                         <path
                           className="opacity-75"
                           fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 极 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
                       Registering...
