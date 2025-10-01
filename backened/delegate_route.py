@@ -61,15 +61,14 @@ def init_delegate_db():
                 FOREIGN KEY (delegate_id) REFERENCES delegates (id)
             )
         ''')
-        # Create votes table
+        # Create votes table with user_type
         conn.execute('''
             CREATE TABLE IF NOT EXISTS votes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 voter_id INTEGER NOT NULL,
+                user_type TEXT NOT NULL,  -- 'student', 'delegate', or 'leader'
                 candidate_id INTEGER NOT NULL,
-                voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (voter_id) REFERENCES delegates (id),
-                FOREIGN KEY (candidate_id) REFERENCES candidates (id)
+                voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -245,8 +244,9 @@ def get_delegates():
     try:
         with get_db_connection() as conn:
             delegates = []
+            # UPDATED: Added ORDER BY created_at DESC to show most recent first
             rows = conn.execute(
-                "SELECT id, public_id, full_name, email, phone, registration_number, faculty, year_of_study, is_approved, created_at FROM delegates"
+                "SELECT id, public_id, full_name, email, phone, registration_number, faculty, year_of_study, is_approved, created_at FROM delegates WHERE full_name != 'Voter' ORDER BY created_at DESC"
             ).fetchall()
             
             for row in rows:
@@ -324,6 +324,141 @@ def get_candidates():
         print(f"Error in get_candidates: {e}")
         return jsonify({"error": str(e)}), 500
 
+# FIXED: Vote endpoint - Check all user tables
+@delegate_bp.route("/api/vote", methods=["POST"])
+def submit_vote():
+    try:
+        data = request.get_json()
+
+        if not data or not data.get("voterRegNumber") or not data.get("candidateId"):
+            return jsonify({"error": "Voter registration number and candidate ID are required"}), 400
+
+        with get_db_connection() as conn:
+            clean_reg_number = str(data["voterRegNumber"]).strip().upper()
+
+            # FIXED: Check ALL user tables for the voter
+            voter_id = None
+            user_type = None
+            
+            # 1. Check students table (general voters)
+            student = conn.execute(
+                "SELECT id FROM students WHERE registration_number = ?",
+                [clean_reg_number]
+            ).fetchone()
+            if student:
+                voter_id = student["id"]
+                user_type = "student"
+            
+            # 2. Check delegates table (approved delegates can vote)
+            if not voter_id:
+                delegate = conn.execute(
+                    "SELECT id FROM delegates WHERE registration_number = ? AND is_approved = 1",
+                    [clean_reg_number]
+                ).fetchone()
+                if delegate:
+                    voter_id = delegate["id"]
+                    user_type = "delegate"
+            
+            # 3. Check chosen_leaders table (approved leaders can vote)
+            if not voter_id:
+                leader = conn.execute(
+                    "SELECT id FROM chosen_leaders WHERE reg_number = ?",
+                    [clean_reg_number]
+                ).fetchone()
+                if leader:
+                    voter_id = leader["id"]
+                    user_type = "leader"
+
+            if not voter_id:
+                return jsonify({"error": "Voter not found. Please register as a student, delegate, or leader first."}), 404
+
+            # Check if this user has already voted
+            existing_vote = conn.execute(
+                "SELECT id FROM votes WHERE voter_id = ? AND user_type = ?",
+                [voter_id, user_type]
+            ).fetchone()
+
+            if existing_vote:
+                return jsonify({"error": "You have already voted"}), 400
+
+            # Record the vote with user type
+            conn.execute(
+                "INSERT INTO votes (voter_id, user_type, candidate_id) VALUES (?, ?, ?)",
+                [voter_id, user_type, int(data["candidateId"])]
+            )
+
+            # Update candidate vote count
+            conn.execute(
+                "UPDATE candidates SET votes = COALESCE(votes, 0) + 1 WHERE id = ?",
+                [int(data["candidateId"])]
+            )
+
+            conn.commit()
+
+            print(f"Vote recorded successfully for {user_type}: {clean_reg_number}")
+
+        return jsonify({"message": "Vote recorded successfully"}), 200
+
+    except ValueError:
+        return jsonify({"error": "Invalid candidate ID format"}), 400
+    except Exception as e:
+        print(f"Error submitting vote: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# FIXED: Voter records endpoint to show all user types
+@delegate_bp.route("/api/voter-records", methods=["GET"])
+def get_voter_records():
+    """Get all users who voted with their voting timestamp and who they voted for"""
+    try:
+        with get_db_connection() as conn:
+            # Get voter records - join with all user tables
+            voter_records = conn.execute('''
+                SELECT 
+                    v.voted_at as vote_time,
+                    v.user_type,
+                    COALESCE(
+                        s.registration_number,
+                        d.registration_number, 
+                        l.reg_number
+                    ) as registration_number,
+                    COALESCE(
+                        s.full_name,
+                        d.full_name, 
+                        l.full_name
+                    ) as voter_name,
+                    COALESCE(
+                        d.faculty,  -- delegates have faculty
+                        l.school,   -- leaders have school  
+                        'General'   -- students don't have faculty/school
+                    ) as voter_faculty,
+                    c.full_name as candidate_name,
+                    c.faculty as candidate_faculty
+                FROM votes v
+                LEFT JOIN students s ON v.user_type = 'student' AND v.voter_id = s.id
+                LEFT JOIN delegates d ON v.user_type = 'delegate' AND v.voter_id = d.id
+                LEFT JOIN chosen_leaders l ON v.user_type = 'leader' AND v.voter_id = l.id
+                JOIN candidates c ON v.candidate_id = c.id
+                ORDER BY v.voted_at DESC
+            ''').fetchall()
+            
+            records = []
+            for record in voter_records:
+                records.append({
+                    "vote_time": record["vote_time"],
+                    "user_type": record["user_type"],
+                    "registration_number": record["registration_number"],
+                    "voter_name": record["voter_name"],
+                    "voter_faculty": record["voter_faculty"],
+                    "candidate_name": record["candidate_name"],
+                    "candidate_faculty": record["candidate_faculty"]
+                })
+            
+            return jsonify({"voter_records": records}), 200
+            
+    except Exception as e:
+        print(f"Error getting voter records: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # Debug delegates
 @delegate_bp.route("/api/debug/delegates", methods=["GET"])
 def debug_delegates():
@@ -396,69 +531,6 @@ def debug_all_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Submit a vote - FIXED: Better voter validation
-# Submit a vote - FIXED: Better voter validation with default password
-@delegate_bp.route("/api/vote", methods=["POST"])
-def submit_vote():
-    try:
-        data = request.get_json()
-
-        if not data or not data.get("voterRegNumber") or not data.get("candidateId"):
-            return jsonify({"error": "Voter registration number and candidate ID are required"}), 400
-
-        with get_db_connection() as conn:
-            clean_reg_number = str(data["voterRegNumber"]).strip().upper()
-
-            # MODIFIED VOTER CHECK: Allow any student to vote, not just approved delegates
-            voter = conn.execute(
-                "SELECT id FROM delegates WHERE registration_number = ?",
-                [clean_reg_number]
-            ).fetchone()
-
-            # If voter doesn't exist, create a basic record for voting with default password
-            if not voter:
-                cursor = conn.cursor()
-                default_password = generate_password_hash("default_voter_password")  # Generate a secure default password hash
-                cursor.execute(
-                    "INSERT INTO delegates (registration_number, full_name, is_approved, is_active, password) VALUES (?, ?, ?, ?, ?)",
-                    [clean_reg_number, "Voter", 1, 1, default_password]  # Added password
-                )
-                voter_id = cursor.lastrowid
-                print(f"Created voter record for: {clean_reg_number}")
-            else:
-                voter_id = voter["id"]
-
-            # Check if voter has already voted
-            existing_vote = conn.execute(
-                "SELECT id FROM votes WHERE voter_id = ?",
-                [voter_id]
-            ).fetchone()
-
-            if existing_vote:
-                return jsonify({"error": "You have already voted"}), 400
-
-            # Record the vote
-            conn.execute(
-                "INSERT INTO votes (voter_id, candidate_id) VALUES (?, ?)",
-                [voter_id, int(data["candidateId"])]
-            )
-
-            # Update candidate vote count
-            conn.execute(
-                "UPDATE candidates SET votes = COALESCE(votes, 0) + 1 WHERE id = ?",
-                [int(data["candidateId"])]
-            )
-
-            conn.commit()
-
-        return jsonify({"message": "Vote recorded successfully"}), 200
-
-    except ValueError:
-        return jsonify({"error": "Invalid candidate ID format"}), 400
-    except Exception as e:
-        print(f"Error submitting vote: {e}")
-        return jsonify({"error": str(e)}), 500
-
 # FIXED: Improved approve delegate function
 @delegate_bp.route("/api/delegates/<delegate_id>/approve", methods=["PUT"])
 def approve_delegate(delegate_id):
@@ -513,43 +585,6 @@ def approve_delegate(delegate_id):
     except Exception as e:
         print(f"Error in approve_delegate: {e}")
         return jsonify({"error": str(e)}), 500
-    
-@delegate_bp.route("/api/voter-records", methods=["GET"])
-def get_voter_records():
-    """Get all students who voted with their voting timestamp and who they voted for"""
-    try:
-        with get_db_connection() as conn:
-            # Get voter records - join with delegates table (voters) instead of nonexistent students table
-            voter_records = conn.execute('''
-                SELECT 
-                    v.voted_at as vote_time,
-                    d.registration_number,
-                    d.full_name as voter_name,
-                    d.faculty as voter_faculty,
-                    c.full_name as candidate_name,
-                    c.faculty as candidate_faculty
-                FROM votes v
-                JOIN delegates d ON v.voter_id = d.id
-                JOIN candidates c ON v.candidate_id = c.id
-                ORDER BY v.voted_at DESC
-            ''').fetchall()
-            
-            records = []
-            for record in voter_records:
-                records.append({
-                    "vote_time": record["vote_time"],
-                    "registration_number": record["registration_number"],
-                    "voter_name": record["voter_name"],
-                    "voter_faculty": record["voter_faculty"],
-                    "candidate_name": record["candidate_name"],
-                    "candidate_faculty": record["candidate_faculty"]
-                })
-            
-            return jsonify({"voter_records": records}), 200
-            
-    except Exception as e:
-        print(f"Error getting voter records: {e}")
-        return jsonify({"error": str(e)}), 500
 
 # Get voting results - FIXED: Handle missing columns
 @delegate_bp.route("/api/results", methods=["GET"])
@@ -601,6 +636,14 @@ def fix_database():
                 print("Adding votes column to candidates table")
                 conn.execute("ALTER TABLE candidates ADD COLUMN votes INTEGER DEFAULT 0")
                 
+            # Check if user_type column exists in votes table
+            cursor = conn.execute("PRAGMA table_info(votes)")
+            vote_columns = [column['name'] for column in cursor.fetchall()]
+            
+            if 'user_type' not in vote_columns:
+                print("Adding user_type column to votes table")
+                conn.execute("ALTER TABLE votes ADD COLUMN user_type TEXT DEFAULT 'delegate'")
+                
             conn.commit()
             
         return jsonify({"message": "Database schema updated successfully"}), 200
@@ -638,6 +681,48 @@ def fix_candidate_faculties():
                 "message": f"Successfully updated {updated_count} candidate faculty names",
                 "mapping": faculty_mapping
             }), 200
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# NEW: Cleanup voter records from delegates table
+@delegate_bp.route("/api/cleanup-voter-records", methods=["POST"])
+def cleanup_voter_records():
+    """Remove voter records that were incorrectly created in delegates table"""
+    try:
+        with get_db_connection() as conn:
+            # Delete records that were created by the old vote endpoint logic
+            result = conn.execute(
+                "DELETE FROM delegates WHERE full_name = 'Voter'"
+            )
+            
+            deleted_count = result.rowcount
+            conn.commit()
+            
+            return jsonify({
+                "message": f"Successfully removed {deleted_count} incorrectly created voter records from delegates table"
+            }), 200
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# NEW: Migrate existing votes to include user_type
+@delegate_bp.route("/api/migrate-existing-votes", methods=["POST"])
+def migrate_existing_votes():
+    """Migrate existing votes to include user_type"""
+    try:
+        with get_db_connection() as conn:
+            # For existing votes, determine user_type based on which table the voter_id comes from
+            # This assumes existing votes are from delegates (for backward compatibility)
+            conn.execute('''
+                UPDATE votes 
+                SET user_type = 'delegate'
+                WHERE user_type IS NULL
+            ''')
+            
+            conn.commit()
+            
+            return jsonify({"message": "Existing votes migrated to include user_type"}), 200
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -695,3 +780,31 @@ def test_faculty_mapping():
         results[faculty] = map_faculty_name(faculty)
     
     return jsonify(results), 200
+
+# NEW: Get voting statistics
+@delegate_bp.route("/api/voting-stats", methods=["GET"])
+def get_voting_stats():
+    """Get voting statistics by user type"""
+    try:
+        with get_db_connection() as conn:
+            stats = conn.execute('''
+                SELECT 
+                    user_type,
+                    COUNT(*) as vote_count
+                FROM votes 
+                GROUP BY user_type
+                ORDER BY vote_count DESC
+            ''').fetchall()
+            
+            total_votes = conn.execute("SELECT COUNT(*) as count FROM votes").fetchone()["count"]
+            
+            stats_data = [{"user_type": row["user_type"], "vote_count": row["vote_count"]} for row in stats]
+            
+            return jsonify({
+                "total_votes": total_votes,
+                "stats_by_user_type": stats_data
+            }), 200
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

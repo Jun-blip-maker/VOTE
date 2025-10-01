@@ -269,7 +269,7 @@ function Leaders() {
                                 <img
                                   src={photoUrl}
                                   alt={candidate.fullName}
-                                  className="w-32 h-32 rounded-full object-cover border-4 photo-img"
+                                  className="w-45 h-45 rounded-full object-cover border-4 photo-img"
                                   style={{ borderColor: "#008800" }}
                                   onError={(e) => {
                                     console.log(
