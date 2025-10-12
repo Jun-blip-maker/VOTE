@@ -58,7 +58,7 @@ const RegDropDown = () => {
               className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
               role="menuitem"
             >
-              register as a Student
+              Register as a Voter
             </a>
           </div>
         </div>

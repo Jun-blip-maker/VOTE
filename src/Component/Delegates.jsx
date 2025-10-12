@@ -13,33 +13,39 @@ const Delegates = () => {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Define the schools exactly as they should appear
-  const schools = [
+  // STRICT SCHOOL MAPPING - No flexible matching
+  const schoolMapping = {
+    // Backend values -> Frontend display names (EXACT MATCH ONLY)
+    "School of Business and Economics": "School of Business and Economics",
+    "School of Pure and Applied Science": "School of Pure and Applied Science",
+    "School of Education Arts": "School of Education Arts",
+    "School of Education Sciences": "School of Education Sciences",
+
+    // Common backend variations
+    "Business And Economics": "School of Business and Economics",
+    "Pure and Applied Science": "School of Pure and Applied Science",
+    "Education Arts": "School of Education Arts",
+    "Education Sciences": "School of Education Sciences",
+  };
+
+  // Schools in exact order for display
+  const displaySchools = [
     "School of Business and Economics",
     "School of Pure and Applied Science",
-    "School of Education Art",
-    "School of Education Science",
+    "School of Education Arts",
+    "School of Education Sciences",
   ];
 
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
-        // FIXED: Use the correct endpoint that returns approved candidates
         const response = await fetch("http://localhost:5000/api/results");
-
         if (!response.ok) {
           throw new Error(`Failed to load candidates: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log("Candidates loaded:", data); // Debug log
-
-        // ADDED: Debug each candidate's faculty
-        data.forEach((candidate) => {
-          console.log(
-            `Candidate: ${candidate.full_name}, Faculty: "${candidate.faculty}"`
-          );
-        });
+        console.log("Raw candidates data:", data);
 
         setCandidates(data);
         setIsLoading(false);
@@ -52,49 +58,29 @@ const Delegates = () => {
     fetchCandidates();
   }, []);
 
-  // FIXED: Improved faculty matching logic
-  const candidatesBySchool = schools.reduce((acc, school) => {
-    acc[school] = candidates.filter((candidate) => {
-      const candidateFaculty = (
-        candidate.faculty ||
-        candidate.school ||
-        ""
-      ).trim();
+  // STRICT GROUPING - Only exact matches
+  const candidatesBySchool = displaySchools.reduce((acc, displaySchool) => {
+    acc[displaySchool] = candidates.filter((candidate) => {
+      const candidateFaculty = candidate.faculty || "";
 
-      // FIXED: Exact match first
-      if (candidateFaculty === school) {
-        console.log(`Exact match: ${candidate.full_name} -> ${school}`);
-        return true;
-      }
-
-      // FIXED: More flexible partial matching
-      const schoolLower = school.toLowerCase();
-      const facultyLower = candidateFaculty.toLowerCase();
-
-      // Check if faculty contains key words from school name
-      const isMatch =
-        facultyLower.includes(schoolLower) ||
-        schoolLower.includes(facultyLower) ||
-        // Additional specific matching for common abbreviations
-        (schoolLower.includes("business") &&
-          facultyLower.includes("business")) ||
-        (schoolLower.includes("science") && facultyLower.includes("science")) ||
-        (schoolLower.includes("education") &&
-          facultyLower.includes("education")) ||
-        (schoolLower.includes("art") && facultyLower.includes("art"));
+      // Find if this candidate's faculty maps to the current display school
+      const mappedSchool = schoolMapping[candidateFaculty];
+      const isMatch = mappedSchool === displaySchool;
 
       if (isMatch) {
         console.log(
-          `Match found: ${candidate.full_name} (${candidateFaculty}) -> ${school}`
+          `✅ Correct match: ${candidate.full_name} (${candidateFaculty}) -> ${displaySchool}`
+        );
+      } else {
+        console.log(
+          `❌ No match: ${candidate.full_name} (${candidateFaculty}) -> ${displaySchool}`
         );
       }
 
       return isMatch;
     });
 
-    // Debug: Log how many candidates found for each school
-    console.log(`${school}: ${acc[school].length} candidates`);
-
+    console.log(`🏫 ${displaySchool}: ${acc[displaySchool].length} candidates`);
     return acc;
   }, {});
 
@@ -124,6 +110,12 @@ const Delegates = () => {
     }
 
     try {
+      console.log("Submitting vote for:", {
+        voterRegNumber: voterData.registrationNumber,
+        candidateId: selectedCandidate.id,
+        candidateName: selectedCandidate.full_name,
+      });
+
       const response = await fetch("http://localhost:5000/api/vote", {
         method: "POST",
         headers: {
@@ -135,9 +127,12 @@ const Delegates = () => {
         }),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to submit vote");
+        throw new Error(
+          responseData.error || `Failed to submit vote: ${response.status}`
+        );
       }
 
       setSuccess(true);
@@ -145,14 +140,15 @@ const Delegates = () => {
       setVoterData({ fullName: "", registrationNumber: "" });
       setSelectedCandidate(null);
 
-      // Navigate to /CVote after 2 seconds
       setTimeout(() => {
         navigate("/CV-page");
       }, 2000);
     } catch (err) {
-      setError(err.message || "Failed to submit vote");
+      console.error("Vote submission error:", err);
+      setError(err.message || "Failed to submit vote. Please try again.");
     }
   };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -174,7 +170,14 @@ const Delegates = () => {
 
             {error && (
               <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700">
+                <p className="font-semibold">Error:</p>
                 <p>{error}</p>
+                {error.includes("not found") && (
+                  <p className="text-sm mt-2">
+                    Make sure you are registered as a student, delegate, or
+                    leader.
+                  </p>
+                )}
               </div>
             )}
 
@@ -186,7 +189,7 @@ const Delegates = () => {
 
             {!selectedCandidate ? (
               <div className="space-y-8">
-                {schools.map((school) => (
+                {displaySchools.map((school) => (
                   <div
                     key={school}
                     className="border-b border-gray-200 pb-6 last:border-b-0"
@@ -238,7 +241,7 @@ const Delegates = () => {
                       {selectedCandidate.full_name}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {selectedCandidate.faculty || selectedCandidate.school}
+                      {selectedCandidate.faculty}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Reg: {selectedCandidate.registration_number}
@@ -266,6 +269,7 @@ const Delegates = () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-green focus:border-green-500 sm:text-sm"
                     value={voterData.fullName}
                     onChange={handleVoterChange}
+                    placeholder="Enter your full name as registered"
                   />
                 </div>
 
@@ -284,7 +288,11 @@ const Delegates = () => {
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
                     value={voterData.registrationNumber}
                     onChange={handleVoterChange}
+                    placeholder="Enter your registration number"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Make sure this matches your registration in the system
+                  </p>
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
@@ -297,7 +305,7 @@ const Delegates = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring--500"
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                   >
                     Submit Vote
                   </button>

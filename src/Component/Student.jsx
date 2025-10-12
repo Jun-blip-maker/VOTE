@@ -96,7 +96,7 @@ const Student = () => {
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
         <div className="text-center">
           <h2 className="mt-6 text-2xl font-extrabold text-gray-900">
-            Student Registration
+            Voter Registration
           </h2>
           <p className="mt-2 text-sm text-gray-600">
             Please fill in your details to register

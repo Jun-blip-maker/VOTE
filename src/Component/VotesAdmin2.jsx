@@ -13,9 +13,9 @@ const API_CONFIG = {
   BASE_URL: "http://localhost:5000",
   ENDPOINTS: {
     RESULTS: "/api/results",
-    VOTES: "/api/debug/all-data",
     CANDIDATES: "/api/candidates",
     VOTER_RECORDS: "/api/voter-records",
+    RECOUNT_VOTES: "/api/recount-votes",
   },
 };
 
@@ -62,10 +62,9 @@ const VotesAdmin2 = () => {
     try {
       setError(null);
 
-      const [resultsData, votesData, candidatesData, voterRecordsData] =
+      const [resultsData, candidatesData, voterRecordsData] =
         await Promise.allSettled([
           fetchResults(),
-          fetchVotesData(),
           fetchCandidates(),
           fetchVoterRecords(),
         ]);
@@ -73,28 +72,21 @@ const VotesAdmin2 = () => {
       // Handle each response with debug logging
       if (resultsData.status === "fulfilled") {
         setVotesData((prev) => ({ ...prev, ...resultsData.value }));
-        console.log("Results data:", resultsData.value);
+        console.log("Results data loaded successfully");
       } else {
         console.error("Results fetch failed:", resultsData.reason);
       }
 
-      if (votesData.status === "fulfilled") {
-        setVotesData((prev) => ({ ...prev, ...votesData.value }));
-        console.log("Votes data:", votesData.value);
-      } else {
-        console.error("Votes data fetch failed:", votesData.reason);
-      }
-
       if (candidatesData.status === "fulfilled") {
         setCandidates(candidatesData.value);
-        console.log("Candidates data:", candidatesData.value);
+        console.log("Candidates data loaded successfully");
       } else {
         console.error("Candidates fetch failed:", candidatesData.reason);
       }
 
       if (voterRecordsData.status === "fulfilled") {
         setVoterRecords(voterRecordsData.value.voter_records || []);
-        console.log("Voter records data:", voterRecordsData.value);
+        console.log("Voter records data loaded successfully");
       } else {
         console.error("Voter records fetch failed:", voterRecordsData.reason);
       }
@@ -130,14 +122,6 @@ const VotesAdmin2 = () => {
     return await response.json();
   };
 
-  const fetchVotesData = async () => {
-    const response = await fetchWithTimeout(
-      `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOTES}`
-    ); // Fixed missing closing parenthesis
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return await response.json();
-  };
-
   const fetchCandidates = async () => {
     const response = await fetchWithTimeout(
       `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CANDIDATES}`
@@ -154,26 +138,66 @@ const VotesAdmin2 = () => {
     return await response.json();
   };
 
+  // Force recount votes
+  const forceRecountVotes = async () => {
+    try {
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.RECOUNT_VOTES}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      const result = await response.json();
+      console.log("Recount result:", result);
+
+      if (response.ok) {
+        alert("Votes recounted successfully!");
+        fetchData(); // Refresh the data
+      } else {
+        alert("Recount failed: " + result.error);
+      }
+    } catch (error) {
+      console.error("Recount error:", error);
+      alert("Recount failed: " + error.message);
+    }
+  };
+
   // Calculate school totals based on votes for candidates from each school
   const calculateSchoolTotals = () => {
     const schools = {
       "School of Business and Economics": 0,
       "School of Pure and Applied Science": 0,
-      "School of Education Art": 0,
-      "School of Education Science": 0,
+      "School of Education Arts": 0,
+      "School of Education Sciences": 0,
     };
 
     candidates.forEach((candidate) => {
       let school = candidate.faculty;
-      // Map faculty names to match UI format
-      if (school === "Business And Economics")
+
+      // Map faculty names to ensure consistency
+      if (
+        school === "Education Sciences" ||
+        school === "School of Education Science"
+      ) {
+        school = "School of Education Sciences";
+      } else if (
+        school === "Education Arts" ||
+        school === "School of Education Art"
+      ) {
+        school = "School of Education Arts";
+      } else if (
+        school === "Business And Economics" ||
+        school === "Business and Economics"
+      ) {
         school = "School of Business and Economics";
-      if (school === "Education Sciences")
-        school = "School of Education Science";
-      if (school === "School of Education Art")
-        school = "School of Education Art"; // Already matches
-      if (school === "School of Pure and Applied Science")
-        school = "School of Pure and Applied Science"; // Already matches
+      } else if (
+        school === "Pure and Applied Science" ||
+        school === "Pure and Applied Sciences"
+      ) {
+        school = "School of Pure and Applied Science";
+      }
 
       if (school && schools.hasOwnProperty(school)) {
         schools[school] += candidate.votes || 0;
@@ -258,6 +282,7 @@ const VotesAdmin2 = () => {
     (sum, votes) => sum + votes,
     0
   );
+
   return (
     <div className="bg-gray-100 min-h-screen">
       <nav
@@ -281,6 +306,12 @@ const VotesAdmin2 = () => {
               >
                 <FaRedo className="inline mr-1" /> Refresh
               </button>
+              <button
+                onClick={forceRecountVotes}
+                className="bg-orange-500 text-white px-3 py-1 rounded text-sm font-medium hover:bg-orange-600"
+              >
+                🔄 Recount
+              </button>
               <div className="flex space-x-4">
                 <a
                   href="/voteadmin-page"
@@ -296,7 +327,6 @@ const VotesAdmin2 = () => {
                 >
                   Delegate Management
                 </a>
-
                 <a
                   href="/registration-page"
                   className=" text-white px-4 py-2 rounded-md"
@@ -362,8 +392,8 @@ const VotesAdmin2 = () => {
               <div>
                 <p className="text-gray-500">Education</p>
                 <h3 className="text-2xl font-bold">
-                  {(schoolTotals["School of Education Art"] || 0) +
-                    (schoolTotals["School of Education Science"] || 0)}
+                  {(schoolTotals["School of Education Arts"] || 0) +
+                    (schoolTotals["School of Education Sciences"] || 0)}
                 </h3>
               </div>
               <div className="bg-yellow-100 p-3 rounded-full">
@@ -412,7 +442,7 @@ const VotesAdmin2 = () => {
             </div>
             <div className="p-4">
               <p className="text-2xl font-bold text-center">
-                {schoolTotals["School of Education Art"] || 0} votes
+                {schoolTotals["School of Education Arts"] || 0} votes
               </p>
             </div>
           </div>
@@ -426,7 +456,7 @@ const VotesAdmin2 = () => {
             </div>
             <div className="p-4">
               <p className="text-2xl font-bold text-center">
-                {schoolTotals["School of Education Science"] || 0} votes
+                {schoolTotals["School of Education Sciences"] || 0} votes
               </p>
             </div>
           </div>
@@ -500,9 +530,6 @@ const VotesAdmin2 = () => {
                     Registration Number
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    School/Faculty
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Vote Time
                   </th>
                 </tr>
@@ -517,15 +544,17 @@ const VotesAdmin2 = () => {
                       {voter.registration_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {voter.faculty || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(voter.vote_time).toLocaleString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {voterRecords.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                No voter records found
+              </div>
+            )}
           </div>
         </div>
 
@@ -538,26 +567,22 @@ const VotesAdmin2 = () => {
           </div>
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="text-center">
-              <p className="text-sm text-gray-500">Total Delegates</p>
-              <p className="text-2xl font-bold">
-                {votesData.delegates_total || 0}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-500">Approved Delegates</p>
-              <p className="text-2xl font-bold">
-                {votesData.delegates_approved || 0}
-              </p>
-            </div>
-            <div className="text-center">
               <p className="text-sm text-gray-500">Total Candidates</p>
-              <p className="text-2xl font-bold">
-                {votesData.candidates_total || 0}
-              </p>
+              <p className="text-2xl font-bold">{candidates.length}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-gray-500">Total Voters</p>
+              <p className="text-2xl font-bold">{voterRecords.length}</p>
             </div>
             <div className="text-center">
               <p className="text-sm text-gray-500">Total Votes Cast</p>
               <p className="text-2xl font-bold">{totalVotes}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-gray-500">Last Updated</p>
+              <p className="text-2xl font-bold">
+                {new Date().toLocaleTimeString()}
+              </p>
             </div>
           </div>
         </div>

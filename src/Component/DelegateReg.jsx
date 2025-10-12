@@ -16,6 +16,14 @@ const DelegateReg = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Consistent faculty options that match the backend expectations
+  const facultyOptions = [
+    { value: "Business And Economics", label: "Business And Economics" },
+    { value: "Pure and Applied Science", label: "Pure and Applied Science" },
+    { value: "Education Arts", label: "Education Arts" },
+    { value: "Education Sciences", label: "Education Sciences" },
+  ];
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -202,14 +210,11 @@ const DelegateReg = () => {
                 disabled={loading}
               >
                 <option value="">Select your faculty</option>
-                <option value="Pure and Applied Science">
-                  Pure and Applied Science
-                </option>
-                <option value="Business And Economics">
-                  Business And Economics
-                </option>
-                <option value="Education Arts">Education Arts</option>
-                <option value="Education Sciences">Education Sciences</option>
+                {facultyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 

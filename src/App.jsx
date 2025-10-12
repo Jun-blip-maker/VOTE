@@ -23,7 +23,7 @@ import AdminDelegates from "./Component/AdminDelegates";
 import LeaderSignin from "./Component/LeaderSignin";
 import VotesAdmin2 from "./Component/VotesAdmin2";
 import ProtectedRoute from "./Component/ProtectedRoute";
-
+import Delegatecopy from "./Component/Delegatecopy";
 function App() {
   return (
     <Router>
@@ -64,6 +64,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Delegates />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delegatecopy-page"
+          element={
+            <ProtectedRoute>
+              <Delegatecopy />
             </ProtectedRoute>
           }
         />

@@ -70,7 +70,7 @@ const LeaderSignin = () => {
         timer: 1500,
       });
 
-      navigate("/delegates-page");
+      navigate("/delegatecopy-page");
     } catch (error) {
       setFormData((prev) => ({ ...prev, password: "" }));
       Swal.fire({

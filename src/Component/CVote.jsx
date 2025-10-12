@@ -26,7 +26,7 @@ function CVote() {
   const [hasVoted, setHasVoted] = useState(false);
   const [debugInfo, setDebugInfo] = useState(""); // For debugging
 
-  // Position mapping - maps form field names to database position names
+  // UPDATED POSITION MAPPING - Fixed sports mapping
   const positionMap = {
     chairperson: "ChairPerson",
     vice_chair: "Vice ChairPerson",
@@ -34,7 +34,7 @@ function CVote() {
     treasurer: "Finance Secretary",
     academic: "Academic Director",
     welfare: "WellFair Director",
-    sports: "Sport/Entertainment Director",
+    sports: "Sports and Entertainment Director", // FIXED: Match backend normalization
   };
 
   // Check if user has already voted
@@ -64,6 +64,7 @@ function CVote() {
     const fetchCandidates = async () => {
       try {
         setIsLoading(true);
+        console.log("🔄 Fetching candidates for all positions...");
 
         // Fetch all approved candidates at once
         const response = await fetch(
@@ -75,13 +76,17 @@ function CVote() {
         }
 
         const data = await response.json();
-        console.log("Fetched candidates data:", data);
+        console.log("📥 Fetched ALL candidates data:", data);
 
         // Group candidates by position
         const candidatesByPosition = {};
         const positions = [];
 
         data.candidates.forEach((candidate) => {
+          console.log(
+            `📋 Candidate: ${candidate.fullName} - Position: "${candidate.position}"`
+          );
+
           if (!candidatesByPosition[candidate.position]) {
             candidatesByPosition[candidate.position] = [];
             positions.push(candidate.position);
@@ -89,13 +94,21 @@ function CVote() {
           candidatesByPosition[candidate.position].push(candidate);
         });
 
-        console.log("Candidates grouped by position:", candidatesByPosition);
-        console.log("Available positions in DB:", positions);
+        console.log("🎯 Candidates grouped by position:", candidatesByPosition);
+        console.log("📍 Available positions in DB:", positions);
+
+        // DEBUG: Check specifically for sports positions
+        const sportsPositions = positions.filter(
+          (pos) =>
+            pos.toLowerCase().includes("sport") ||
+            pos.toLowerCase().includes("entertainment")
+        );
+        console.log("🏀 Sports-related positions found:", sportsPositions);
 
         setCandidates(candidatesByPosition);
         setAvailablePositions(positions);
       } catch (error) {
-        console.error("Error fetching candidates:", error);
+        console.error("❌ Error fetching candidates:", error);
         setSubmitMessage("Error loading candidates. Please refresh the page.");
       } finally {
         setIsLoading(false);
@@ -146,12 +159,8 @@ function CVote() {
         sports: formData.sports,
       };
 
-      console.log("Submitting vote data:", voteData);
+      console.log("🚀 Submitting vote data:", voteData);
       setDebugInfo(JSON.stringify(voteData, null, 2));
-
-      // ADD TIMEOUT AND BETTER ERROR HANDLING
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
       const response = await fetch("http://localhost:5000/api/votes", {
         method: "POST",
@@ -159,26 +168,15 @@ function CVote() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(voteData),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
-      // Check if response is OK before trying to parse JSON
       if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (jsonError) {
-          // If we can't parse JSON, use the response text
-          const errorText = await response.text();
-          throw new Error(`Server error (${response.status}): ${errorText}`);
-        }
+        const errorData = await response.json();
         throw new Error(errorData.error || `Server error: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Server response:", data);
+      console.log("✅ Server response:", data);
 
       setSubmitMessage("Vote submitted successfully!");
       setHasVoted(true);
@@ -199,27 +197,10 @@ function CVote() {
         welfare: "",
         sports: "",
       });
-
-      // Refresh the page to clear any cached data
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
     } catch (error) {
-      console.error("Error submitting vote:", error);
+      console.error("❌ Error submitting vote:", error);
 
-      // SPECIFIC ERROR HANDLING FOR CONNECTION ISSUES
-      if (error.name === "AbortError") {
-        setSubmitMessage(
-          "Connection timeout. Server is not responding. Please make sure the voting server is running."
-        );
-      } else if (
-        error.message.includes("Failed to fetch") ||
-        error.message.includes("NetworkError")
-      ) {
-        setSubmitMessage(
-          "Cannot connect to the voting server. Please check that the server is running on http://localhost:5000"
-        );
-      } else if (error.message.includes("already voted")) {
+      if (error.message.includes("already voted")) {
         setHasVoted(true);
         localStorage.setItem("studentRegNumber", formData.voter_reg_number);
         setSubmitMessage(
@@ -233,31 +214,52 @@ function CVote() {
     }
   };
 
-  // Find the matching position in the database
+  // IMPROVED: Find the matching position in the database with better sports handling
   const findMatchingPosition = (fieldName) => {
     const dbPositionName = positionMap[fieldName];
 
     if (!dbPositionName) {
-      console.error(`No position mapping found for field: ${fieldName}`);
+      console.error(`❌ No position mapping found for field: ${fieldName}`);
       return null;
     }
 
-    // Check if this position exists in available positions
-    const foundPosition = availablePositions.find(
+    console.log(`🔍 Looking for position: "${dbPositionName}"`);
+
+    // Check if this exact position exists in available positions
+    let foundPosition = availablePositions.find(
       (pos) => pos === dbPositionName
     );
 
+    // SPECIAL HANDLING FOR SPORTS POSITION
+    if (!foundPosition && fieldName === "sports") {
+      console.log(
+        "🏀 Sports position not found exactly, searching for variations..."
+      );
+
+      // Look for any sports-related positions
+      foundPosition = availablePositions.find((pos) => {
+        const posLower = pos.toLowerCase();
+        return posLower.includes("sport") || posLower.includes("entertainment");
+      });
+
+      if (foundPosition) {
+        console.log(`🎯 Found sports variation: "${foundPosition}"`);
+      }
+    }
+
     if (!foundPosition) {
       console.warn(
-        `Position ${dbPositionName} not found in available positions`
+        `⚠️ Position "${dbPositionName}" not found in available positions`
       );
+      console.warn(`📋 Available positions:`, availablePositions);
       return null;
     }
 
+    console.log(`✅ Position found: "${foundPosition}"`);
     return foundPosition;
   };
 
-  // Render candidate options for a position
+  // IMPROVED: Render candidate options for a position with sports debugging
   const renderCandidateOptions = (fieldName, displayName) => {
     if (isLoading) {
       return <option value="">Loading candidates...</option>;
@@ -273,7 +275,22 @@ function CVote() {
     }
 
     const candidateList = candidates[matchedPosition] || [];
-    console.log(`Candidates for ${displayName}:`, candidateList);
+
+    // DEBUG LOGGING FOR SPORTS
+    if (fieldName === "sports") {
+      console.log(
+        `🏀 Sports candidates for "${matchedPosition}":`,
+        candidateList
+      );
+      console.log(
+        `🏀 All sports-related positions:`,
+        availablePositions.filter(
+          (pos) =>
+            pos.toLowerCase().includes("sport") ||
+            pos.toLowerCase().includes("entertainment")
+        )
+      );
+    }
 
     if (candidateList.length === 0) {
       return (
@@ -288,6 +305,7 @@ function CVote() {
       ...candidateList.map((candidate) => (
         <option key={candidate.id} value={candidate.regNumber}>
           {candidate.fullName} ({candidate.regNumber})
+          {candidate.school && ` - ${candidate.school}`}
         </option>
       )),
     ];
@@ -311,7 +329,7 @@ function CVote() {
                 localStorage.removeItem("studentRegNumber");
                 window.location.reload();
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors mr-2"
+              className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition-colors mr-2"
             >
               Clear Vote Record
             </button>
@@ -356,18 +374,10 @@ function CVote() {
                   </div>
                 )}
 
-                {/* Debug info - only show in development */}
-                {process.env.NODE_ENV === "development" && debugInfo && (
-                  <div className="p-4 mb-6 bg-gray-100 rounded-md">
-                    <h3 className="font-bold">Debug Info:</h3>
-                    <pre className="text-xs overflow-auto">{debugInfo}</pre>
-                  </div>
-                )}
-
                 {/* Form Starts */}
                 <form onSubmit={handleSubmit}>
                   <div className="space-y-5">
-                    {/* Name Field */}
+                    {/* Voter Information Fields (unchanged) */}
                     <div>
                       <label
                         htmlFor="voter_name"
@@ -397,7 +407,7 @@ function CVote() {
                           id="voter_name"
                           name="voter_name"
                           placeholder="Enter your full name"
-                          className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600 caret-blue-600"
+                          className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600 caret-green-600"
                           required
                           value={formData.voter_name}
                           onChange={handleChange}
@@ -405,7 +415,6 @@ function CVote() {
                       </div>
                     </div>
 
-                    {/* Registration Number Field */}
                     <div>
                       <label
                         htmlFor="voter_reg_number"
@@ -435,7 +444,7 @@ function CVote() {
                           id="voter_reg_number"
                           name="voter_reg_number"
                           placeholder="Enter your registration number"
-                          className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600 caret-blue-600"
+                          className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600 caret-green-600"
                           required
                           value={formData.voter_reg_number}
                           onChange={handleChange}
@@ -443,7 +452,6 @@ function CVote() {
                       </div>
                     </div>
 
-                    {/* School/Delegate Dropdown */}
                     <div>
                       <label
                         htmlFor="voter_school"
@@ -471,7 +479,7 @@ function CVote() {
                         <select
                           id="voter_school"
                           name="voter_school"
-                          className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600 caret-blue-600 appearance-none"
+                          className="block w-full py-4 pl-10 pr-4 text-black placeholder-gray-500 transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600 caret-green-600 appearance-none"
                           required
                           value={formData.voter_school}
                           onChange={handleChange}
@@ -499,7 +507,7 @@ function CVote() {
                         Vote for Leadership Positions
                       </h3>
 
-                      {/* Chairperson */}
+                      {/* Other positions... */}
                       <div>
                         <label
                           htmlFor="chairperson"
@@ -510,7 +518,7 @@ function CVote() {
                         <select
                           id="chairperson"
                           name="chairperson"
-                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600"
+                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600"
                           required
                           value={formData.chairperson}
                           onChange={handleChange}
@@ -519,7 +527,6 @@ function CVote() {
                         </select>
                       </div>
 
-                      {/* Vice Chairperson */}
                       <div>
                         <label
                           htmlFor="vice_chair"
@@ -530,7 +537,7 @@ function CVote() {
                         <select
                           id="vice_chair"
                           name="vice_chair"
-                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600"
+                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600"
                           required
                           value={formData.vice_chair}
                           onChange={handleChange}
@@ -542,7 +549,6 @@ function CVote() {
                         </select>
                       </div>
 
-                      {/* Secretary General */}
                       <div>
                         <label
                           htmlFor="secretary"
@@ -553,7 +559,7 @@ function CVote() {
                         <select
                           id="secretary"
                           name="secretary"
-                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600"
+                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600"
                           required
                           value={formData.secretary}
                           onChange={handleChange}
@@ -565,7 +571,6 @@ function CVote() {
                         </select>
                       </div>
 
-                      {/* Finance Secretary */}
                       <div>
                         <label
                           htmlFor="treasurer"
@@ -576,7 +581,7 @@ function CVote() {
                         <select
                           id="treasurer"
                           name="treasurer"
-                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600"
+                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600"
                           required
                           value={formData.treasurer}
                           onChange={handleChange}
@@ -588,7 +593,6 @@ function CVote() {
                         </select>
                       </div>
 
-                      {/* Academic Director */}
                       <div>
                         <label
                           htmlFor="academic"
@@ -599,7 +603,7 @@ function CVote() {
                         <select
                           id="academic"
                           name="academic"
-                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600"
+                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600"
                           required
                           value={formData.academic}
                           onChange={handleChange}
@@ -611,7 +615,6 @@ function CVote() {
                         </select>
                       </div>
 
-                      {/* Welfare Director */}
                       <div>
                         <label
                           htmlFor="welfare"
@@ -622,7 +625,7 @@ function CVote() {
                         <select
                           id="welfare"
                           name="welfare"
-                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-600"
+                          className="block w-full py-3 pl-3 pr-4 text-black transition-all duration-200 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-600"
                           required
                           value={formData.welfare}
                           onChange={handleChange}
@@ -634,7 +637,7 @@ function CVote() {
                         </select>
                       </div>
 
-                      {/* Sports and Entertainment Director */}
+                      {/* SPORTS POSITION - FIXED */}
                       <div>
                         <label
                           htmlFor="sports"
@@ -662,7 +665,7 @@ function CVote() {
                     <div>
                       <button
                         type="submit"
-                        className="inline-flex items-center justify-center w-full px-4 py-4 text-base font-semibold text-white transition-all duration-200 bg-blue-600 border border-transparent rounded-md focus:outline-none hover:bg-blue-700 focus:bg-blue-700"
+                        className="inline-flex items-center justify-center w-full px-4 py-4 text-base font-semibold text-white transition-all duration-200 bg-green-600 border border-transparent rounded-md focus:outline-none hover:bg-green-700 focus:bg-green-700"
                         disabled={isSubmitting}
                       >
                         {isSubmitting ? "Submitting..." : "Submit Vote"}
@@ -670,7 +673,6 @@ function CVote() {
                     </div>
                   </div>
                 </form>
-                {/* Form Ends */}
               </div>
             </div>
           </div>
